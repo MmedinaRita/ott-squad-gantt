@@ -251,7 +251,6 @@ async function loadData(){
     setConnected(true);
     document.getElementById('loading-screen').style.display='none';
     document.getElementById('main-app').style.display='block';
-    scrollToToday();
   } catch(e){
     document.getElementById('loading-screen').style.display='none';
     setConnected(false);
@@ -282,6 +281,8 @@ async function loadGroup(groupId){
   allItems=parseItems(grp.items_page.items);
   apF.clear(); asF.clear(); onlyDeadline=false;
   document.getElementById('deadline-chip').className='chip';
+  render();
+  scrollToToday();
 }
 
 function parseItems(raw){
@@ -315,8 +316,6 @@ async function onSprintChange(){
     await loadGroup(currentGroupId);
     document.getElementById('loading-screen').style.display='none';
     document.getElementById('main-app').style.display='block';
-    render();
-    scrollToToday();
   } catch(e){
     document.getElementById('loading-screen').style.display='none';
     document.getElementById('main-app').style.display='block';
@@ -562,19 +561,25 @@ function untip(){ document.getElementById('tt').classList.remove('show'); }
 function scrollToToday(){
   setTimeout(()=>{
     const gr=document.getElementById('gr');
-    if(!gr) return;
-    // Buscar la posición de hoy en el timeline
+    if(!gr||!allItems.length) return;
     const {start:sprintStart,end:sprintEnd}=getSprintDates();
     const days=calcTimelineDays(allItems,sprintStart,sprintEnd);
-    const todayI=days.findIndex(d=>{const t=new Date();t.setHours(0,0,0,0);return d.getTime()===t.getTime();});
+    const today=new Date(); today.setHours(0,0,0,0);
+    const todayI=days.findIndex(d=>d.getTime()===today.getTime());
     if(todayI>=0){
-      const scrollTo=Math.max(0, todayI*dayW - gr.clientWidth/2);
+      const scrollTo=Math.max(0, todayI*dayW - gr.clientWidth/3);
       gr.scrollLeft=scrollTo;
+      document.getElementById('gl').scrollTop=0;
     }
-  }, 100);
+  }, 200);
 }
 
-function doZoom(d){ dayW=Math.max(25,Math.min(160,dayW+d)); document.getElementById('zlbl').textContent=Math.round(dayW/60*100)+'%'; render(); setTimeout(scrollToToday,50); }
+function doZoom(d){
+  dayW=Math.max(25,Math.min(160,dayW+d));
+  document.getElementById('zlbl').textContent=Math.round(dayW/60*100)+'%';
+  render();
+  scrollToToday();
+}
 function syncScroll(){ document.getElementById('gl').scrollTop=document.getElementById('gr').scrollTop; }
 function setLoad(msg){ document.getElementById('load-txt').textContent=msg; }
 function setConnected(ok){ document.getElementById('dot').className='dot'+(ok?' on':''); document.getElementById('conn-lbl').textContent=ok?'Conectado':'Desconectado'; }
