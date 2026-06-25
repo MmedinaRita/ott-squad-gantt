@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OTT Squad — Gantt</title>
+<style>
+:root{--bg:#0F0F13;--surface:#1A1A22;--surface2:#22222E;--border:#2A2A3A;--border2:#38384E;--text:#E8E8F0;--text2:#8888A8;--text3:#44445A;--accent:#6B5FFF;--today:#FF6B6B}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;font-size:13px}
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.logo{display:flex;align-items:center;gap:9px}
+.logo-m{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,#6B5FFF,#A78BFA);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff}
+.logo-t{font-size:13px;font-weight:600}.logo-s{font-size:10px;color:var(--text2);margin-top:1px}
+.hdr-r{display:flex;align-items:center;gap:8px}
+.conn{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
+.dot{width:7px;height:7px;border-radius:50%;background:#FF6B6B;transition:background .3s}
+.dot.on{background:#3ECF8E}
+.btn{padding:6px 12px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .15s}
+.btn:hover{color:var(--text);border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+/* SETUP */
+.setup{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 61px);padding:24px}
+.setup-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:40px;max-width:460px;width:100%}
+.setup-card h2{font-size:18px;font-weight:600;margin-bottom:8px}
+.setup-card p{color:var(--text2);font-size:13px;line-height:1.6;margin-bottom:20px}
+.flbl{font-size:10px;font-weight:500;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
+.finp{width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;font-family:monospace;outline:none;transition:border-color .15s}
+.finp:focus{border-color:var(--accent)}
+.setup-actions{display:flex;gap:8px;margin-top:16px}
+/* LOADING */
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 61px);gap:14px}
+.spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-txt{color:var(--text2);font-size:13px}
+/* TOOLBAR */
+.tb{display:flex;align-items:center;gap:8px;padding:8px 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap;min-height:44px}
+.tb-sep{width:1px;height:18px;background:var(--border);flex-shrink:0}
+.lbl{font-size:10px;color:var(--text2);font-weight:500;white-space:nowrap}
+.chips{display:flex;gap:3px;flex-wrap:wrap}
+.chip{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;transition:all .12s;white-space:nowrap}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.search{display:flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border2);border-radius:5px;padding:4px 9px;min-width:150px}
+.search input{border:none;background:transparent;color:var(--text);font-size:11px;outline:none;width:100%}
+.search input::placeholder{color:var(--text3)}
+.zoom{display:flex;align-items:center;gap:3px}
+.zbtn{width:24px;height:24px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+.zbtn:hover{border-color:var(--accent);color:var(--accent)}
+.sprint-sel{padding:5px 8px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:11px;outline:none;cursor:pointer}
+/* STATS */
+.stats{display:flex;background:var(--bg);border-bottom:1px solid var(--border)}
+.stat{flex:1;padding:8px 16px;background:var(--surface);border-right:1px solid var(--border)}
+.stat:last-child{border-right:none}
+.sv{font-size:18px;font-weight:700}.sl{font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-top:1px}
+/* GANTT */
+.gantt-wrap{display:flex;height:calc(100vh - 61px - 44px - 42px - 32px);overflow:hidden}
+.gl{width:200px;flex-shrink:0;overflow-y:auto;overflow-x:hidden;border-right:1px solid var(--border);background:var(--surface);scrollbar-width:thin}
+.gr{flex:1;overflow:auto;scrollbar-width:thin}
+.phdr{display:flex;align-items:center;gap:7px;padding:6px 10px;background:var(--surface2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:2}
+.av{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff}
+.pn{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc{font-size:9px;color:var(--text2)}
+.erow{display:flex;align-items:center;gap:5px;padding:4px 10px 4px 40px;border-bottom:1px solid var(--border);font-size:9px;color:var(--text2);min-height:22px}
+.edot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.trow-l{padding:3px 10px 3px 40px;border-bottom:1px solid var(--border);font-size:9px;color:var(--text3);min-height:20px;display:flex;align-items:center;line-height:1.3;overflow:hidden}
+.day-hdr{display:flex;position:sticky;top:0;z-index:10;background:var(--surface2);border-bottom:1px solid var(--border)}
+.day{flex-shrink:0;text-align:center;padding:4px 0;border-right:1px solid var(--border);font-size:9px;color:var(--text2);line-height:1.4}
+.day.tod{color:var(--today);font-weight:700}.day.wknd{opacity:.4}
+.dl{position:absolute;top:0;bottom:0;width:1px;background:var(--border);opacity:.4;pointer-events:none}
+.dl.tod{background:var(--today);opacity:.9;width:2px}.dl.wknd{opacity:.15}
+.bar{position:absolute;height:14px;top:3px;border-radius:3px;display:flex;align-items:center;padding:0 5px;font-size:8px;font-weight:600;white-space:nowrap;overflow:hidden;cursor:pointer;transition:opacity .1s;z-index:2}
+.bar:hover{opacity:.8;z-index:10}
+.s-done{background:#1E4D3A;color:#6FCF97}
+.s-prog{background:#1B3A5C;color:#7EC8E3}
+.s-cr{background:#2D2060;color:#B39DDB}
+.s-qa{background:#4D3000;color:#FFD166}
+.s-stuck{background:#4D1010;color:#FF6B6B}
+.s-pf{background:#4D2800;color:#FFB347}
+.s-todo{background:#242435;color:#6666A0}
+.s-pause{background:#2A2A3A;color:#8888A8}
+.s-cra{background:#1A3A2A;color:#80CBC4}
+.leg{display:flex;align-items:center;gap:12px;padding:6px 20px;background:var(--surface);border-top:1px solid var(--border);flex-wrap:wrap;position:sticky;bottom:0}
+.li{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text2)}
+.ls{width:9px;height:9px;border-radius:2px}
+.tt{position:fixed;z-index:999;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px 13px;max-width:280px;pointer-events:none;opacity:0;transition:opacity .08s;font-size:11px;line-height:1.5;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.tt.show{opacity:1}
+.tt-title{font-weight:600;color:var(--text);margin-bottom:4px;line-height:1.4}
+.tt-meta{color:var(--text2);font-size:10px}
+.tt-st{display:inline-block;margin-top:5px;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:600}
+.err-box{padding:2rem;text-align:center;color:var(--text2);font-size:13px}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="logo">
+    <div class="logo-m">OT</div>
+    <div>
+      <div class="logo-t">OTT Squad Planner</div>
+      <div class="logo-s" id="sprint-label">Next Planning · Cargando...</div>
+    </div>
+  </div>
+  <div class="hdr-r">
+    <div class="conn"><div class="dot" id="dot"></div><span id="conn-lbl">Desconectado</span></div>
+    <button class="btn primary" onclick="loadData()">↻ Actualizar</button>
+    <button class="btn" onclick="showSetup()">⚙ Config</button>
+  </div>
+</header>
+
+<!-- SETUP -->
+<div id="setup-screen" class="setup" style="display:none">
+  <div class="setup-card">
+    <h2>Configuración</h2>
+    <p>Ingresá tu token de monday.com. Se guarda en tu navegador y no se comparte con nadie.</p>
+    <div class="flbl">Token de monday.com</div>
+    <input class="finp" id="token-inp" type="password" placeholder="eyJhbGci...">
+    <div style="margin-top:12px">
+      <div class="flbl">Board ID</div>
+      <input class="finp" id="board-inp" type="text" value="392795928">
+    </div>
+    <div class="setup-actions">
+      <button class="btn primary" onclick="saveAndLoad()">Conectar →</button>
+      <button class="btn" onclick="cancelSetup()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading-screen" class="loading" style="display:none">
+  <div class="spinner"></div>
+  <div class="load-txt" id="load-txt">Conectando...</div>
+</div>
+
+<!-- MAIN -->
+<div id="main-app" style="display:none">
+  <div class="tb" id="tb">
+    <span class="lbl">Sprint:</span>
+    <select class="sprint-sel" id="sprint-sel" onchange="onSprintChange()"></select>
+    <div class="tb-sep"></div>
+    <span class="lbl">Personas:</span>
+    <div class="chips" id="pchips"></div>
+    <div class="tb-sep"></div>
+    <span class="lbl">Estado:</span>
+    <div class="chips" id="schips"></div>
+    <div class="tb-sep"></div>
+    <div class="search"><span style="color:var(--text3)">⌕</span><input type="text" placeholder="Buscar..." id="q" oninput="render()"></div>
+    <div class="tb-sep"></div>
+    <div class="zoom">
+      <button class="zbtn" onclick="doZoom(-8)">−</button>
+      <span style="font-size:10px;color:var(--text2);min-width:28px;text-align:center" id="zlbl">100%</span>
+      <button class="zbtn" onclick="doZoom(8)">+</button>
+    </div>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="gantt-wrap">
+    <div class="gl" id="gl"></div>
+    <div class="gr" id="gr" onscroll="syncScroll()"></div>
+  </div>
+  <div class="leg">
+    <div class="li"><div class="ls s-done"></div>Done</div>
+    <div class="li"><div class="ls s-prog"></div>In Progress</div>
+    <div class="li"><div class="ls s-cr"></div>Code Review</div>
+    <div class="li"><div class="ls s-cra"></div>CR Approved</div>
+    <div class="li"><div class="ls s-qa"></div>QA</div>
+    <div class="li"><div class="ls s-stuck"></div>Stuck</div>
+    <div class="li"><div class="ls s-pf"></div>Pending Feedback</div>
+    <div class="li"><div class="ls s-pause"></div>Pause</div>
+    <div class="li"><div class="ls s-todo"></div>To Do</div>
+    <div class="li" style="margin-left:auto"><div style="width:2px;height:9px;background:var(--today);border-radius:1px"></div><span>Hoy</span></div>
+  </div>
+</div>
+
+<div class="tt" id="tt"></div>
+
+<script>
+const BOARD_ID = '392795928';
+const EMAIL_MAP = {'lloyo@mediastre.am':'Leonardo Loyo','jcarmona@mediastre.am':'Juan José Carmona','egomez@mediastre.am':'Esteban Gomez'};
+const NAME_FIX = {'Rene Arias':'René Arias','Sebastian Navarro':'Sebastián Navarro'};
+const TEAM = new Set(['Patrick Stange','Sthephany Granados','Juan José Carmona','René Arias','Daniel Lagos','Alejo Jil','Sebastián Navarro','Andrés Guevara','Bryan Gama','Leonardo Loyo','Esteban Gomez']);
+const TEAM_ORDER = ['Patrick Stange','Sthephany Granados','Juan José Carmona','René Arias','Daniel Lagos','Alejo Jil','Sebastián Navarro','Andrés Guevara','Bryan Gama','Leonardo Loyo','Esteban Gomez'];
+const PC = ['#6B5FFF','#FF6B9D','#FFB347','#4ECDC4','#45B7D1','#96CEB4','#FF8C94','#A8E6CF','#FFD93D','#C77DFF','#74B9FF'];
+const DN = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+let TOKEN = '', allItems = [], groups = [], currentGroupId = '', dayW = 60;
+let apF = new Set(), asF = new Set(), pcmap = {}, pci = 0;
+
+function pColor(p){ if(!pcmap[p]){pcmap[p]=PC[pci%PC.length];pci++;} return pcmap[p]; }
+TEAM_ORDER.forEach(p=>pColor(p));
+
+// ── INIT ──────────────────────────────────────────────────────────
+window.onload = () => {
+  TOKEN = localStorage.getItem('monday_token') || '';
+  if(TOKEN){ loadData(); }
+  else { showSetup(); }
+};
+
+function showSetup(){
+  document.getElementById('setup-screen').style.display='flex';
+  document.getElementById('main-app').style.display='none';
+  document.getElementById('loading-screen').style.display='none';
+  if(TOKEN) document.getElementById('token-inp').value=TOKEN;
+}
+
+function cancelSetup(){
+  if(allItems.length){ document.getElementById('setup-screen').style.display='none'; document.getElementById('main-app').style.display='block'; }
+}
+
+function saveAndLoad(){
+  TOKEN = document.getElementById('token-inp').value.trim();
+  if(!TOKEN){ alert('Ingresá el token'); return; }
+  localStorage.setItem('monday_token', TOKEN);
+  loadData();
+}
+
+// ── API ───────────────────────────────────────────────────────────
+async function gql(query){
+  const r = await fetch('https://api.monday.com/v2', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':TOKEN,'API-Version':'2024-01'},
+    body: JSON.stringify({query})
+  });
+  if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  const d = await r.json();
+  if(d.errors) throw new Error(d.errors[0].message);
+  return d.data;
+}
+
+async function loadData(){
+  document.getElementById('setup-screen').style.display='none';
+  document.getElementById('loading-screen').style.display='flex';
+  document.getElementById('main-app').style.display='none';
+  setLoad('Conectando a monday.com...');
+
+  try {
+    // Get all groups
+    setLoad('Obteniendo sprints...');
+    const gdata = await gql(`{ boards(ids:[${BOARD_ID}]) { name groups { id title } } }`);
+    const board = gdata.boards[0];
+    document.getElementById('sprint-label').textContent = board.name + ' · Next Planning';
+
+    // Filter sprint groups (exclude backlogs, cancelled, etc.)
+    groups = board.groups.filter(g => g.title.match(/OTT-\d{4}\/\d+/));
+
+    // Build sprint selector
+    const sel = document.getElementById('sprint-sel');
+    sel.innerHTML = '';
+    groups.forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = g.title.replace(/\s*\(.*?\)\s*/g,' ').trim().slice(0,40);
+      sel.appendChild(opt);
+    });
+
+    // Select current sprint (most recent non-DONE)
+    const today = new Date().toISOString().slice(0,10);
+    let best = groups.find(g => !g.title.includes('DONE') && !g.title.includes('Done'));
+    if(!best) best = groups[0];
+    sel.value = best.id;
+    currentGroupId = best.id;
+
+    await loadGroup(currentGroupId);
+    setConnected(true);
+    document.getElementById('loading-screen').style.display='none';
+    document.getElementById('main-app').style.display='block';
+
+  } catch(e) {
+    document.getElementById('loading-screen').style.display='none';
+    setConnected(false);
+    alert(`Error conectando a monday.com:\n${e.message}`);
+    showSetup();
+  }
+}
+
+async function loadGroup(groupId){
+  setLoad('Cargando tareas del sprint...');
+  const data = await gql(`{
+    boards(ids:[${BOARD_ID}]) {
+      groups(ids:["${groupId}"]) {
+        title
+        items_page(limit:500) {
+          items {
+            id name
+            column_values(ids:["person","status","status02","fecha_interna","status0"]) {
+              id text
+            }
+          }
+        }
+      }
+    }
+  }`);
+
+  const grp = data.boards[0].groups[0];
+  document.getElementById('sprint-label').textContent = grp.title;
+  allItems = parseItems(grp.items_page.items);
+  apF.clear(); asF.clear();
+  render();
+}
+
+function parseItems(raw){
+  const result = [];
+  raw.forEach(item => {
+    const cols = {};
+    (item.column_values||[]).forEach(c => cols[c.id] = c.text||'');
+    let personsRaw = cols['person']||'';
+    let persons = personsRaw.split(',').map(p=>p.trim()).filter(Boolean)
+      .map(p => EMAIL_MAP[p]||p)
+      .map(p => NAME_FIX[p]||p)
+      .filter(p => TEAM.has(p));
+    if(!persons.length) return;
+    result.push({
+      id: item.id,
+      name: item.name,
+      persons,
+      status: cols['status']||'',
+      env: cols['status02']||'',
+      fecha: cols['fecha_interna']||'',
+      priority: cols['status0']||''
+    });
+  });
+  return result;
+}
+
+async function onSprintChange(){
+  currentGroupId = document.getElementById('sprint-sel').value;
+  apF.clear(); asF.clear();
+  document.getElementById('loading-screen').style.display='flex';
+  document.getElementById('main-app').style.display='none';
+  try {
+    await loadGroup(currentGroupId);
+    document.getElementById('loading-screen').style.display='none';
+    document.getElementById('main-app').style.display='block';
+  } catch(e) {
+    document.getElementById('loading-screen').style.display='none';
+    document.getElementById('main-app').style.display='block';
+    alert('Error: '+e.message);
+  }
+}
+
+// ── RENDER ────────────────────────────────────────────────────────
+function getSprintDates(){
+  const grp = groups.find(g=>g.id===currentGroupId);
+  if(!grp) return {start:new Date(), end:new Date()};
+  const m = grp.title.match(/\(\s*(\d+)\s+(\w+)\s*[-–]\s*(\d+)\s+(\w+)\s*(?:(\d{4}))?\s*\)/);
+  const MONTHS = {Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Set:8,Sep:8,Oct:9,Nov:10,Dic:11};
+  if(m){
+    const yr = m[5] ? parseInt(m[5]) : new Date().getFullYear();
+    const m1 = MONTHS[m[2]], m2 = MONTHS[m[4]];
+    const start = new Date(yr, m1 !== undefined ? m1 : 5, parseInt(m[1]));
+    const end   = new Date(yr, m2 !== undefined ? m2 : 5, parseInt(m[3]));
+    if(!isNaN(start) && !isNaN(end)) return {start, end};
+  }
+  // Fallback: use today ± 6 days
+  const t = new Date(); t.setHours(0,0,0,0);
+  const s = new Date(t); s.setDate(t.getDate()-t.getDay()+1);
+  const e = new Date(s); e.setDate(s.getDate()+11);
+  return {start:s, end:e};
+}
+
+function mkDays(start, end){
+  const days=[]; const d=new Date(start);
+  while(d<=end){days.push(new Date(d)); d.setDate(d.getDate()+1);}
+  return days;
+}
+
+function getBar(fecha, days){
+  if(!fecha||!fecha.trim()) return {si:0, ei:days.length-1};
+  const p = fecha.split(' - ');
+  const find = str => { const t=new Date(str.trim()+'T00:00:00'); return days.findIndex(d=>d.getTime()===t.getTime()); };
+  let si=find(p[0]); if(si<0) si=0;
+  let ei=p[1]?find(p[1]):si; if(ei<0) ei=days.length-1;
+  return {si:Math.max(0,si), ei:Math.min(days.length-1,Math.max(si,ei))};
+}
+
+function sc(s){
+  const l=(s||'').toLowerCase();
+  if(l.includes('done')) return 's-done';
+  if(l.includes('cr-approved')) return 's-cra';
+  if(l.includes('progress')) return 's-prog';
+  if(l.includes('code-review')) return 's-cr';
+  if(l==='qa'||l.startsWith('qa ')) return 's-qa';
+  if(l.includes('stuck')) return 's-stuck';
+  if(l.includes('pending')) return 's-pf';
+  if(l.includes('pause')) return 's-pause';
+  return 's-todo';
+}
+
+function eCol(e){
+  const l=(e||'').toLowerCase();
+  if(l.includes('web')||l.includes('staging')||l.includes('manager')||l.includes('production')) return '#185FA5';
+  if(l.includes('mobile')||l.includes('ios')||l.includes('hotfix')) return '#27500A';
+  if(l.includes('android')&&!l.includes('tv')) return '#2E7D32';
+  if(l.includes('tv')||l.includes('roku')||l.includes('fire')||l.includes('vidaa')||l.includes('development')) return '#6B3FA0';
+  if(l.includes('backend')) return '#854F0B';
+  if(l.includes('qa')) return '#5C3D00';
+  return '#444';
+}
+
+function ini(n){ const p=n.split(' '); return(p[0][0]+(p[1]?.[0]||'')).toUpperCase(); }
+
+function buildChips(items){
+  const people=[...new Set(items.flatMap(i=>i.persons))].sort((a,b)=>{const ia=TEAM_ORDER.indexOf(a),ib=TEAM_ORDER.indexOf(b);return ia<0&&ib<0?a.localeCompare(b):ia<0?1:ib<0?-1:ia-ib;});
+  const statuses=[...new Set(items.map(i=>i.status))].filter(Boolean).sort();
+  const pc=document.getElementById('pchips'), sc2=document.getElementById('schips');
+  pc.innerHTML=''; sc2.innerHTML='';
+
+  const a1=document.createElement('button'); a1.className='chip'+(apF.size===0?' on':''); a1.textContent='Todos';
+  a1.onclick=()=>{apF.clear();render();}; pc.appendChild(a1);
+  people.forEach(p=>{
+    const c=document.createElement('button'); const col=pColor(p);
+    c.className='chip'+(apF.has(p)?' on':''); c.textContent=p.split(' ')[0]; c.title=p;
+    c.style.borderColor=col; if(apF.has(p)){c.style.background=col;c.style.color='#fff';}
+    c.onclick=()=>{apF.has(p)?apF.delete(p):apF.add(p);render();}; pc.appendChild(c);
+  });
+
+  const a2=document.createElement('button'); a2.className='chip'+(asF.size===0?' on':''); a2.textContent='Todos';
+  a2.onclick=()=>{asF.clear();render();}; sc2.appendChild(a2);
+  statuses.forEach(s=>{
+    const c=document.createElement('button'); c.className='chip'+(asF.has(s)?' on':''); c.textContent=s;
+    c.onclick=()=>{asF.has(s)?asF.delete(s):asF.add(s);render();}; sc2.appendChild(c);
+  });
+}
+
+function render(){
+  buildChips(allItems);
+  const q=(document.getElementById('q')?.value||'').toLowerCase();
+  let items=allItems.filter(i=>{
+    if(q&&!i.name.toLowerCase().includes(q)&&!i.persons.join().toLowerCase().includes(q))return false;
+    if(apF.size>0&&!i.persons.some(p=>apF.has(p)))return false;
+    if(asF.size>0&&!asF.has(i.status))return false;
+    return true;
+  });
+
+  const total=items.length, done=items.filter(i=>i.status==='Done').length;
+  const prog=items.filter(i=>i.status==='In Progress').length;
+  const stuck=items.filter(i=>i.status==='Stuck').length;
+  const pct=total?Math.round(done/total*100):0;
+  document.getElementById('stats').innerHTML=`
+    <div class="stat"><div class="sv">${total}</div><div class="sl">Tareas</div></div>
+    <div class="stat"><div class="sv" style="color:#6FCF97">${done}</div><div class="sl">Done</div></div>
+    <div class="stat"><div class="sv" style="color:#7EC8E3">${prog}</div><div class="sl">En progreso</div></div>
+    <div class="stat"><div class="sv" style="color:#FF6B6B">${stuck}</div><div class="sl">Stuck</div></div>
+    <div class="stat"><div class="sv" style="color:#B39DDB">${[...new Set(items.flatMap(i=>i.persons))].length}</div><div class="sl">Personas</div></div>
+    <div class="stat"><div class="sv">${pct}%</div><div class="sl">Completado</div></div>`;
+
+  const {start, end} = getSprintDates();
+  const days = mkDays(start, end);
+  const N = days.length;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayI = days.findIndex(d=>d.getTime()===today.getTime());
+  const TW = N * dayW;
+
+  // Group by person → env
+  const pmap={};
+  items.forEach(item=>{
+    item.persons.forEach(p=>{
+      if(!pmap[p])pmap[p]={};
+      const e=item.env.split('/')[0].trim()||'Local';
+      if(!pmap[p][e])pmap[p][e]=[];
+      pmap[p][e].push(item);
+    });
+  });
+
+  const people=Object.keys(pmap).sort((a,b)=>{
+    const ia=TEAM_ORDER.indexOf(a),ib=TEAM_ORDER.indexOf(b);
+    return ia<0&&ib<0?a.localeCompare(b):ia<0?1:ib<0?-1:ia-ib;
+  });
+
+  function dls(h){ return days.map((_,i)=>{const iT=i===todayI,iW=days[i].getDay()===0||days[i].getDay()===6;return `<div class="dl${iT?' tod':iW?' wknd':''}" style="left:${i*dayW}px;height:${h}px"></div>`;}).join(''); }
+
+  // LEFT
+  let lh='';
+  people.forEach(p=>{
+    const envs=pmap[p]; const tc=Object.values(envs).flat().length; const col=pColor(p);
+    lh+=`<div><div class="phdr"><div class="av" style="background:${col}">${ini(p)}</div><div><div class="pn">${p.split(' ')[0]} ${p.split(' ')[1]||''}</div><div class="pc">${tc} tarea${tc!==1?'s':''}</div></div></div>`;
+    Object.entries(envs).forEach(([e,ts])=>{
+      lh+=`<div class="erow"><div class="edot" style="background:${eCol(e)}"></div>${e} <span style="margin-left:auto">${ts.length}</span></div>`;
+      ts.forEach(t=>{ lh+=`<div class="trow-l" title="${t.name}">${t.name.length>27?t.name.slice(0,26)+'…':t.name}</div>`; });
+    });
+    lh+=`</div>`;
+  });
+  document.getElementById('gl').innerHTML=lh||'<div class="err-box">Sin resultados</div>';
+
+  // RIGHT
+  let rh=`<div class="day-hdr" style="width:${TW}px">`;
+  days.forEach((d,i)=>{
+    const iT=i===todayI,iW=d.getDay()===0||d.getDay()===6;
+    rh+=`<div class="day${iT?' tod':iW?' wknd':''}" style="width:${dayW}px">${DN[d.getDay()]}<br><strong>${d.getDate()}</strong></div>`;
+  });
+  rh+=`</div><div style="width:${TW}px">`;
+
+  people.forEach(p=>{
+    const envs=pmap[p];
+    rh+=`<div style="border-bottom:1px solid var(--border)"><div style="height:42px;width:${TW}px;position:relative;background:var(--surface2);border-bottom:1px solid var(--border)">${dls(42)}</div>`;
+    Object.entries(envs).forEach(([e,ts])=>{
+      rh+=`<div style="height:22px;width:${TW}px;position:relative;background:var(--surface);border-bottom:1px solid var(--border)">${dls(22)}</div>`;
+      ts.forEach(t=>{
+        const {si,ei}=getBar(t.fecha,days);
+        const left=si*dayW, width=Math.max(dayW*.7,(ei-si+1)*dayW-2);
+        const cls=sc(t.status);
+        const es=s=>s.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        rh+=`<div style="height:20px;width:${TW}px;position:relative;border-bottom:1px solid var(--border)">${dls(20)}<div class="bar ${cls}" style="left:${left}px;width:${width}px" data-n="${es(t.name)}" data-p="${es(t.persons.join(', '))}" data-s="${t.status}" data-e="${t.env}" data-f="${t.fecha||'Sin fecha'}" onmouseenter="tip(event,this)" onmouseleave="untip()" onclick="window.open('https://mediastream.monday.com/boards/${BOARD_ID}/pulses/${t.id}','_blank')">${t.name.slice(0,Math.max(4,Math.floor(width/6)))}</div></div>`;
+      });
+    });
+    rh+=`</div>`;
+  });
+  rh+=`</div>`;
+  document.getElementById('gr').innerHTML=rh;
+}
+
+function tip(e,el){
+  const t=document.getElementById('tt');
+  t.innerHTML=`<div class="tt-title">${el.dataset.n}</div><div class="tt-meta">👤 ${el.dataset.p}<br>🖥 ${el.dataset.e}<br>📅 ${el.dataset.f}</div><span class="tt-st ${sc(el.dataset.s)}">${el.dataset.s}</span>`;
+  t.style.left=Math.min(e.clientX+12,window.innerWidth-300)+'px';
+  t.style.top=Math.min(e.clientY+12,window.innerHeight-150)+'px';
+  t.classList.add('show');
+}
+function untip(){ document.getElementById('tt').classList.remove('show'); }
+function doZoom(d){ dayW=Math.max(25,Math.min(160,dayW+d)); document.getElementById('zlbl').textContent=Math.round(dayW/60*100)+'%'; render(); }
+function syncScroll(){ document.getElementById('gl').scrollTop=document.getElementById('gr').scrollTop; }
+function setLoad(msg){ document.getElementById('load-txt').textContent=msg; }
+function setConnected(ok){ document.getElementById('dot').className='dot'+(ok?' on':''); document.getElementById('conn-lbl').textContent=ok?'Conectado':'Desconectado'; }
+</script>
+</body>
+</html>
