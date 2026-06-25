@@ -351,7 +351,6 @@ function getSprintDates(){
     const end   = new Date(yr, m2 !== undefined ? m2 : 5, parseInt(m[3]));
     if(!isNaN(start) && !isNaN(end)) return {start, end};
   }
-  // Fallback: use today ± 6 days
   const t = new Date(); t.setHours(0,0,0,0);
   const s = new Date(t); s.setDate(t.getDate()-t.getDay()+1);
   const e = new Date(s); e.setDate(s.getDate()+11);
@@ -364,12 +363,33 @@ function mkDays(start, end){
   return days;
 }
 
+// Calcula el rango ampliado del timeline considerando fechas fuera del sprint
+function calcTimelineDays(items, sprintStart, sprintEnd){
+  let minD = new Date(sprintStart);
+  let maxD = new Date(sprintEnd);
+  items.forEach(item => {
+    if(!item.fecha||!item.fecha.trim()) return;
+    const parts = item.fecha.split(' - ');
+    const d1 = new Date(parts[0].trim()+'T00:00:00');
+    const d2 = parts[1] ? new Date(parts[1].trim()+'T00:00:00') : d1;
+    if(!isNaN(d1) && d1 < minD) minD = d1;
+    if(!isNaN(d2) && d2 > maxD) maxD = d2;
+  });
+  return mkDays(minD, maxD);
+}
+
 function getBar(fecha, days){
-  if(!fecha||!fecha.trim()) return {si:0, ei:days.length-1};
+  if(!fecha||!fecha.trim()) return null; // null = sin fecha, no mostrar barra larga
   const p = fecha.split(' - ');
-  const find = str => { const t=new Date(str.trim()+'T00:00:00'); return days.findIndex(d=>d.getTime()===t.getTime()); };
-  let si=find(p[0]); if(si<0) si=0;
-  let ei=p[1]?find(p[1]):si; if(ei<0) ei=days.length-1;
+  const toIdx = str => {
+    const t = new Date(str.trim()+'T00:00:00');
+    return days.findIndex(d=>d.getTime()===t.getTime());
+  };
+  let si = toIdx(p[0]);
+  let ei = p[1] ? toIdx(p[1]) : si;
+  // Si no encontramos las fechas en el array de días (no debería pasar con timeline ampliado)
+  if(si<0) si=0;
+  if(ei<0) ei=days.length-1;
   return {si:Math.max(0,si), ei:Math.min(days.length-1,Math.max(si,ei))};
 }
 
@@ -444,11 +464,14 @@ function render(){
     <div class="stat"><div class="sv" style="color:#B39DDB">${[...new Set(items.flatMap(i=>i.persons))].length}</div><div class="sl">Personas</div></div>
     <div class="stat"><div class="sv">${pct}%</div><div class="sl">Completado</div></div>`;
 
-  const {start, end} = getSprintDates();
-  const days = mkDays(start, end);
+  const {start: sprintStart, end: sprintEnd} = getSprintDates();
+  // Timeline ampliado: incluye fechas internas fuera del rango del sprint
+  const days = calcTimelineDays(items, sprintStart, sprintEnd);
   const N = days.length;
   const today = new Date(); today.setHours(0,0,0,0);
   const todayI = days.findIndex(d=>d.getTime()===today.getTime());
+  const sprintStartI = days.findIndex(d=>d.getTime()===sprintStart.getTime());
+  const sprintEndI = days.findIndex(d=>d.getTime()===sprintEnd.getTime());
   const TW = N * dayW;
 
   // Group by person → env
@@ -467,7 +490,14 @@ function render(){
     return ia<0&&ib<0?a.localeCompare(b):ia<0?1:ib<0?-1:ia-ib;
   });
 
-  function dls(h){ return days.map((_,i)=>{const iT=i===todayI,iW=days[i].getDay()===0||days[i].getDay()===6;return `<div class="dl${iT?' tod':iW?' wknd':''}" style="left:${i*dayW}px;height:${h}px"></div>`;}).join(''); }
+  function dls(h){ return days.map((_,i)=>{
+    const iT=i===todayI, iW=days[i].getDay()===0||days[i].getDay()===6;
+    const outSprint = sprintStartI>=0 && (i<sprintStartI || i>sprintEndI);
+    const extra = outSprint ? ';background:rgba(255,255,255,0.02)' : '';
+    return `<div class="dl${iT?' tod':iW?' wknd':''}" style="left:${i*dayW}px;height:${h}px${extra}"></div>`;
+  }).join('')
+  + (sprintStartI>=0 ? `<div style="position:absolute;top:0;bottom:0;left:${sprintStartI*dayW}px;width:${(sprintEndI-sprintStartI+1)*dayW}px;background:rgba(107,95,255,0.04);pointer-events:none;border-left:2px solid rgba(107,95,255,0.3);border-right:2px solid rgba(107,95,255,0.3)"></div>` : '');
+  }
 
   // LEFT
   let lh='';
@@ -485,8 +515,10 @@ function render(){
   // RIGHT
   let rh=`<div class="day-hdr" style="width:${TW}px">`;
   days.forEach((d,i)=>{
-    const iT=i===todayI,iW=d.getDay()===0||d.getDay()===6;
-    rh+=`<div class="day${iT?' tod':iW?' wknd':''}" style="width:${dayW}px">${DN[d.getDay()]}<br><strong>${d.getDate()}</strong></div>`;
+    const iT=i===todayI, iW=d.getDay()===0||d.getDay()===6;
+    const outSprint = sprintStartI>=0 && (i<sprintStartI || i>sprintEndI);
+    const extraStyle = outSprint ? 'opacity:0.4;background:rgba(0,0,0,0.2)' : '';
+    rh+=`<div class="day${iT?' tod':iW?' wknd':''}" style="width:${dayW}px;${extraStyle}">${DN[d.getDay()]}<br><strong>${d.getDate()}</strong></div>`;
   });
   rh+=`</div><div style="width:${TW}px">`;
 
@@ -496,11 +528,15 @@ function render(){
     Object.entries(envs).forEach(([e,ts])=>{
       rh+=`<div style="height:22px;width:${TW}px;position:relative;background:var(--surface);border-bottom:1px solid var(--border)">${dls(22)}</div>`;
       ts.forEach(t=>{
-        const {si,ei}=getBar(t.fecha,days);
-        const left=si*dayW, width=Math.max(dayW*.7,(ei-si+1)*dayW-2);
+        const barRange=getBar(t.fecha,days);
         const cls=sc(t.status);
         const es=s=>s.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-        rh+=`<div style="height:20px;width:${TW}px;position:relative;border-bottom:1px solid var(--border)">${dls(20)}<div class="bar ${cls}" style="left:${left}px;width:${width}px" data-n="${es(t.name)}" data-p="${es(t.persons.join(', '))}" data-s="${t.status}" data-e="${t.env}" data-f="${t.fecha||'Sin fecha'}" onmouseenter="tip(event,this)" onmouseleave="untip()" onclick="window.open('https://mediastream.monday.com/boards/${BOARD_ID}/pulses/${t.id}','_blank')">${t.name.slice(0,Math.max(4,Math.floor(width/6)))}</div></div>`;
+        let barHtml='';
+        if(barRange){
+          const left=barRange.si*dayW, width=Math.max(dayW*.7,(barRange.ei-barRange.si+1)*dayW-2);
+          barHtml=`<div class="bar ${cls}" style="left:${left}px;width:${width}px" data-n="${es(t.name)}" data-p="${es(t.persons.join(', '))}" data-s="${t.status}" data-e="${t.env}" data-f="${t.fecha||'Sin fecha'}" onmouseenter="tip(event,this)" onmouseleave="untip()" onclick="window.open('https://mediastream.monday.com/boards/${BOARD_ID}/pulses/${t.id}','_blank')">${t.name.slice(0,Math.max(4,Math.floor(width/6)))}</div>`;
+        }
+        rh+=`<div style="height:20px;width:${TW}px;position:relative;border-bottom:1px solid var(--border)">${dls(20)}${barHtml}</div>`;
       });
     });
     rh+=`</div>`;
