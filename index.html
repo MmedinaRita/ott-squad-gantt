@@ -142,6 +142,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
   <div class="tabs">
     <div class="tab active" id="tab-gantt" onclick="switchTab('gantt')">📊 Gantt</div>
     <div class="tab" id="tab-dash" onclick="switchTab('dash')">📈 Resumen Ejecutivo</div>
+    <button id="export-btn" onclick="exportReport()" style="display:none;margin-left:auto;margin-right:16px;padding:5px 14px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid #3ECF8E;background:rgba(62,207,142,0.1);color:#3ECF8E;align-self:center;transition:all .15s" onmouseover="this.style.background='rgba(62,207,142,0.2)'" onmouseout="this.style.background='rgba(62,207,142,0.1)'">📋 Exportar reporte</button>
     <div style="margin-left:auto;display:flex;align-items:center;padding:0 16px;gap:8px">
       <span class="lbl">Sprint:</span>
       <select class="sprint-sel" id="sprint-sel" onchange="onSprintChange()"></select>
@@ -236,6 +237,7 @@ function switchTab(tab){
   document.getElementById('tab-dash').className='tab'+(tab==='dash'?' active':'');
   document.getElementById('gantt-view').style.display=tab==='gantt'?'flex':'none';
   document.getElementById('dash-view').style.display=tab==='dash'?'flex':'none';
+  document.getElementById('export-btn').style.display=tab==='dash'?'flex':'none';
   if(tab==='dash')renderDash();
 }
 
@@ -581,6 +583,154 @@ function renderDash(){
     }).join('')}
   </div>
   `;
+}
+
+function exportReport(){
+  const{start:ss,end:se}=getSprintDates();
+  const items=allItems;
+  const total=items.length;
+  const sprintTitle=document.getElementById('sprint-label').textContent;
+  const today=new Date().toLocaleDateString('es-CL',{day:'2-digit',month:'long',year:'numeric'});
+
+  const done=items.filter(i=>isDone(i.status));
+  const active=items.filter(i=>isActive(i.status));
+  const arrastre=items.filter(i=>isArrastre(i,ss));
+  const stuck=items.filter(i=>i.status==='Stuck');
+  const donePct=total?Math.round(done.length/total*100):0;
+  const activePct=total?Math.round(active.length/total*100):0;
+
+  // Ranking
+  const rankData={};
+  items.forEach(item=>{
+    item.persons.forEach(p=>{
+      if(!rankData[p])rankData[p]={total:0,done:0,productive:0};
+      rankData[p].total++;
+      if(isDone(item.status))rankData[p].done++;
+      const fd=parseDate(item.fecha?.split(' - ')[0]);
+      if(fd&&fd>=ss&&fd<=se&&isActive(item.status))rankData[p].productive++;
+    });
+  });
+  const ranking=Object.entries(rankData).map(([p,d])=>({person:p,done:d.done,total:d.total,pct:d.total?Math.round(d.done/d.total*100):0})).sort((a,b)=>b.pct-a.pct);
+
+  // Planning
+  const planCounts={};
+  items.forEach(i=>{const pl=i.planning||'Sin categoría';planCounts[pl]=(planCounts[pl]||0)+1;});
+
+  // Entorno
+  const envData={};
+  items.forEach(i=>{const e=i.env||'Sin entorno';if(!envData[e])envData[e]={done:0,total:0};envData[e].total++;if(isDone(i.status))envData[e].done++;});
+
+  // Clientes
+  const clientData={};
+  KEY_CLIENTS.forEach(c=>{const its=items.filter(i=>i.client.includes(c));clientData[c]={total:its.length,done:its.filter(i=>isDone(i.status)).length,stuck:its.filter(i=>i.status==='Stuck').length};});
+
+  // Build report text
+  const sep='─'.repeat(50);
+  let r='';
+  r+=`SPRINT REVIEW — ${sprintTitle}\n`;
+  r+=`Generado el ${today}\n`;
+  r+=sep+'\n\n';
+
+  r+=`📊 RESUMEN GENERAL\n`;
+  r+=`  Total ítems en sprint: ${total}\n`;
+  r+=`  ✅ Done / CR-Approved: ${done.length} (${donePct}%)\n`;
+  r+=`  🔄 Activos (no To Do): ${active.length} (${activePct}%)\n`;
+  r+=`  🔴 Stuck: ${stuck.length}\n`;
+  r+=`  ⚠️  Arrastre (fechas anteriores): ${arrastre.length}\n\n`;
+
+  r+=sep+'\n';
+  r+=`🏆 RANKING DE PRODUCTIVIDAD (Done / Total)\n`;
+  const medals=['🥇','🥈','🥉'];
+  ranking.forEach((p,i)=>{
+    const m=medals[i]||`${i+1}.`;
+    r+=`  ${m} ${p.person}: ${p.done}/${p.total} (${p.pct}%)\n`;
+  });
+  r+='\n';
+
+  r+=sep+'\n';
+  r+=`🎯 FOCO DEL EQUIPO (Planning)\n`;
+  Object.entries(planCounts).sort((a,b)=>b[1]-a[1]).forEach(([pl,cnt])=>{
+    const pct=Math.round(cnt/total*100);
+    r+=`  ${pl}: ${cnt} tareas (${pct}%)\n`;
+  });
+  r+='\n';
+
+  r+=sep+'\n';
+  r+=`🖥  AVANCE POR ENTORNO\n`;
+  Object.entries(envData).sort((a,b)=>b[1].total-a[1].total).forEach(([env,d])=>{
+    const pct=d.total?Math.round(d.done/d.total*100):0;
+    const bar='█'.repeat(Math.round(pct/10))+'░'.repeat(10-Math.round(pct/10));
+    r+=`  ${env.padEnd(15)} ${bar} ${d.done}/${d.total} done (${pct}%)\n`;
+  });
+  r+='\n';
+
+  r+=sep+'\n';
+  r+=`⭐ CLIENTES CLAVE\n`;
+  Object.entries(clientData).forEach(([c,d])=>{
+    const pct=d.total?Math.round(d.done/d.total*100):0;
+    r+=`  ${c}: ${d.done}/${d.total} done (${pct}%)${d.stuck>0?' — '+d.stuck+' STUCK':''}\n`;
+  });
+  r+='\n';
+
+  if(arrastre.length>0){
+    r+=sep+'\n';
+    r+=`⚠️  ARRASTRE — Top tareas abiertas de sprints anteriores\n`;
+    arrastre.slice(0,8).forEach(t=>{
+      r+=`  [${t.status}] ${t.name.slice(0,55)}${t.name.length>55?'…':''}\n`;
+      r+=`         → ${t.persons.join(', ')} | ${t.env||'—'}\n`;
+    });
+    if(arrastre.length>8)r+=`  ... y ${arrastre.length-8} más\n`;
+    r+='\n';
+  }
+
+  if(stuck.length>0){
+    r+=sep+'\n';
+    r+=`🔴 ÍTEMS STUCK\n`;
+    stuck.forEach(t=>{
+      r+=`  • ${t.name.slice(0,60)}${t.name.length>60?'…':''}\n`;
+      r+=`    → ${t.persons.join(', ')} | ${t.client||'—'}\n`;
+    });
+    r+='\n';
+  }
+
+  r+=sep+'\n';
+  r+=`💡 PUNTOS CLAVE PARA EL REVIEW\n`;
+  const topPerson=ranking[0];
+  const topEnv=Object.entries(envData).sort((a,b)=>{const pa=a[1].total?a[1].done/a[1].total:0,pb=b[1].total?b[1].done/b[1].total:0;return pb-pa;})[0];
+  const topClient=Object.entries(clientData).sort((a,b)=>b[1].done/Math.max(1,b[1].total)-a[1].done/Math.max(1,a[1].total))[0];
+  const lowPerson=ranking[ranking.length-1];
+  const bugPct=Math.round(((planCounts['Bugs']||0)/total)*100);
+  const roadmapPct=Math.round(((planCounts['Roadmap']||0)/total)*100);
+  r+=`  ✅ MVP del sprint: ${topPerson?.person} (${topPerson?.pct}% done)\n`;
+  r+=`  ✅ Mejor entorno: ${topEnv?.[0]} (${topEnv?.[1]?Math.round(topEnv[1].done/topEnv[1].total*100):0}% done)\n`;
+  r+=`  ✅ Mejor cliente: ${topClient?.[0]} (${topClient?.[1]?Math.round(topClient[1].done/topClient[1].total*100):0}% done)\n`;
+  r+=`  ⚠️  Carga alta y bajo Done: ${lowPerson?.person} (${lowPerson?.pct}%) — revisar si necesita soporte\n`;
+  r+=`  ⚠️  ${bugPct}% del sprint fue Bugs y solo ${roadmapPct}% fue Roadmap planificado\n`;
+  if(arrastre.length>10)r+=`  🚨 ${arrastre.length} tareas de arrastre — planificar limpieza de backlog\n`;
+  r+='\n';
+  r+=`Próximo review: siguiente domingo al cierre del sprint\n`;
+  r+=sep+'\n';
+
+  // Show modal
+  let modal=document.getElementById('export-modal');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='export-modal';
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML=`<div style="background:#1A1A22;border:1px solid #38384E;border-radius:12px;width:100%;max-width:640px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #2A2A3A">
+        <div style="font-size:13px;font-weight:600;color:#E8E8F0">📋 Reporte Sprint Review</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="navigator.clipboard.writeText(document.getElementById('export-text').value).then(()=>{this.textContent='✅ Copiado!';setTimeout(()=>this.textContent='📋 Copiar',2000)})" style="padding:5px 12px;border-radius:5px;font-size:11px;cursor:pointer;border:1px solid #3ECF8E;background:rgba(62,207,142,0.1);color:#3ECF8E">📋 Copiar</button>
+          <button onclick="document.getElementById('export-modal').remove()" style="padding:5px 12px;border-radius:5px;font-size:11px;cursor:pointer;border:1px solid #38384E;background:#22222E;color:#8888A8">✕ Cerrar</button>
+        </div>
+      </div>
+      <textarea id="export-text" readonly style="flex:1;padding:16px;background:#0F0F13;color:#B0B0C8;font-family:monospace;font-size:11px;line-height:1.6;border:none;outline:none;resize:none;overflow-y:auto"></textarea>
+    </div>`;
+    document.body.appendChild(modal);
+  }
+  document.getElementById('export-text').value=r;
+  document.getElementById('export-modal').style.display='flex';
 }
 
 function showTip(e,t){const tt=document.getElementById('tt');const col=getSC(t.status);let dl='';if(t.deadlineCli)dl+=`<div class="tt-dl" style="color:#FF3B30">🔴 Deadline cliente: ${t.deadlineCli}</div>`;if(t.deadlineInt)dl+=`<div class="tt-dl" style="color:#FF9500">🟠 Deadline interno: ${t.deadlineInt}</div>`;tt.innerHTML=`<div class="tt-title">${t.name}</div><div class="tt-meta">👤 ${t.persons.join(', ')}<br>🖥 ${t.env||'—'}<br>📅 ${t.fecha||'Sin fecha'}<br>🏷 ${t.client||'—'} · ${t.planning||'—'}</div><span class="tt-st" style="background:${col.bg};color:${col.fg}">${t.status}</span>${dl}`;tt.style.left=Math.min(e.clientX+12,window.innerWidth-310)+'px';tt.style.top=Math.min(e.clientY+12,window.innerHeight-160)+'px';tt.classList.add('show');}
