@@ -239,6 +239,7 @@ function switchTab(tab){
   document.getElementById('dash-view').style.display=tab==='dash'?'flex':'none';
   document.getElementById('export-btn').style.display=tab==='dash'?'flex':'none';
   if(tab==='dash')renderDash();
+  if(tab==='gantt')requestAnimationFrame(()=>render());
 }
 
 function showSetup(){document.getElementById('setup-screen').style.display='flex';document.getElementById('main-app').style.display='none';document.getElementById('loading-screen').style.display='none';if(TOKEN)document.getElementById('token-inp').value=TOKEN;}
@@ -413,11 +414,17 @@ function render(){
   inner.style.width=TW+'px';inner.style.height=totalH+'px';inner.style.position='relative';
   let canvas=document.getElementById('gc');if(canvas)canvas.remove();
   canvas=document.createElement('canvas');canvas.id='gc';
-  canvas.style.cssText=`position:absolute;top:0;left:0;width:${TW}px;height:${totalH}px`;
+  canvas.style.cssText=`position:absolute;top:0;left:0;width:${TW}px;height:${totalH}px;display:block`;
   inner.appendChild(canvas);
+  // Force a reflow before measuring/painting — fixes blank canvas after tab switch or filter change
+  void inner.offsetHeight;
   const DPR=Math.min(window.devicePixelRatio||1,2);
-  canvas.width=Math.max(1,TW*DPR);canvas.height=Math.max(1,totalH*DPR);
-  const ctx=canvas.getContext('2d');ctx.scale(DPR,DPR);
+  const cw=Math.max(1,Math.round(TW*DPR));
+  const ch=Math.max(1,Math.round(totalH*DPR));
+  canvas.width=cw;canvas.height=ch;
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(DPR,DPR);
 
   ctx.fillStyle='#0F0F13';ctx.fillRect(0,0,TW,totalH);
   if(ssI>=0&&seI>=0){ctx.fillStyle='rgba(107,95,255,0.06)';ctx.fillRect(ssI*dayW,0,(seI-ssI+1)*dayW,totalH);ctx.strokeStyle='rgba(107,95,255,0.25)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(ssI*dayW,0);ctx.lineTo(ssI*dayW,totalH);ctx.stroke();ctx.beginPath();ctx.moveTo((seI+1)*dayW,0);ctx.lineTo((seI+1)*dayW,totalH);ctx.stroke();}
