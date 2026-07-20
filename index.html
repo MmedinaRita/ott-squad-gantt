@@ -142,7 +142,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
   <div class="tabs">
     <div class="tab active" id="tab-gantt" onclick="switchTab('gantt')">📊 Gantt</div>
     <div class="tab" id="tab-dash" onclick="switchTab('dash')">📈 Resumen Ejecutivo</div>
-    <button id="export-btn" onclick="exportReport()" style="display:none;margin-left:auto;margin-right:16px;padding:5px 14px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid #3ECF8E;background:rgba(62,207,142,0.1);color:#3ECF8E;align-self:center;transition:all .15s" onmouseover="this.style.background='rgba(62,207,142,0.2)'" onmouseout="this.style.background='rgba(62,207,142,0.1)'">📋 Exportar reporte</button>
+    <div class="tab" id="tab-risk" onclick="switchTab('risk')">⚠️ Riesgo Cliente</div>
+    <div class="tab" id="tab-both" onclick="switchTab('both')">🧩 Ambos Squads</div>
+    <div class="tab" id="tab-heatmap" onclick="switchTab('heatmap')">🔥 Heatmap</div>
+    <div class="tab" id="tab-trend" onclick="switchTab('trend')">📉 Tendencia</div>
+    <button id="export-btn" onclick="exportReport()" style="display:none;margin-left:auto;padding:5px 14px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid #3ECF8E;background:rgba(62,207,142,0.1);color:#3ECF8E;align-self:center;transition:all .15s" onmouseover="this.style.background='rgba(62,207,142,0.2)'" onmouseout="this.style.background='rgba(62,207,142,0.1)'">📋 Exportar reporte</button>
+    <button id="export-slack-btn" onclick="exportReportSlack()" style="display:none;margin-left:8px;margin-right:16px;padding:5px 14px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid #6B5FFF;background:rgba(107,95,255,0.1);color:#A78BFA;align-self:center;transition:all .15s" onmouseover="this.style.background='rgba(107,95,255,0.2)'" onmouseout="this.style.background='rgba(107,95,255,0.1)'">📋 Exportar (Slack)</button>
     <div style="margin-left:auto;display:flex;align-items:center;padding:0 16px;gap:8px">
       <span class="lbl">Board:</span>
       <select class="sprint-sel" id="board-sel" onchange="onBoardChange()"></select>
@@ -169,7 +174,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
       <div class="tb-sep"></div>
       <span class="lbl">Planning:</span><div class="chips" id="plchips"></div>
       <div class="tb-sep"></div>
+      <span class="lbl">QA:</span><div class="chips" id="qachips"></div>
+      <div class="tb-sep"></div>
       <button class="chip" id="dl-chip" onclick="toggleDeadline()">🔴 Deadline</button>
+      <button class="chip" id="sla-chip" onclick="toggleSlaBad()">⚠️ SLA vencido</button>
       <div class="tb-sep"></div>
       <div class="search"><span style="color:var(--text3)">⌕</span><input type="text" placeholder="Buscar..." id="q" oninput="render()"></div>
       <div class="tb-sep"></div>
@@ -197,6 +205,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
       <div class="li"><div class="ls" style="background:#242435"></div>Pause/To Do</div>
       <div class="li" style="margin-left:6px"><div style="width:2px;height:8px;background:var(--dl-int)"></div>Deadline Interno</div>
       <div class="li"><div style="width:2px;height:8px;background:var(--dl-cli)"></div>Deadline Cliente</div>
+      <div class="li"><div style="width:6px;height:6px;border-radius:50%;background:#FF3B30"></div>SLA vencido</div>
+      <div class="li"><div style="width:4px;height:8px;background:#6B5FFF"></div>Barra izq. = QA asignado (color por persona)</div>
+      <div class="li"><div style="width:8px;height:8px;background:rgba(255,181,71,0.5)"></div>Feriado del país de la persona</div>
       <div class="li" style="margin-left:auto"><div style="width:2px;height:8px;background:var(--today)"></div>Hoy</div>
     </div>
   </div>
@@ -205,6 +216,26 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
   <div id="dash-view">
     <div class="dash" id="dash-content"></div>
   </div>
+
+  <!-- CLIENT RISK VIEW -->
+  <div id="risk-view" style="display:none;flex:1;overflow-y:auto;padding:20px">
+    <div id="risk-content" style="max-width:900px;margin:0 auto"></div>
+  </div>
+
+  <!-- BOTH SQUADS VIEW -->
+  <div id="both-view" style="display:none;flex:1;overflow-y:auto;padding:20px">
+    <div id="both-content" style="display:grid;grid-template-columns:1fr 1fr;gap:16px"></div>
+  </div>
+
+  <!-- HEATMAP VIEW -->
+  <div id="heatmap-view" style="display:none;flex:1;overflow:auto;padding:20px">
+    <div id="heatmap-content"></div>
+  </div>
+
+  <!-- TREND VIEW -->
+  <div id="trend-view" style="display:none;flex:1;overflow-y:auto;padding:20px">
+    <div id="trend-content" style="max-width:800px;margin:0 auto"></div>
+  </div>
 </div>
 
 <div class="tt" id="tt"></div>
@@ -212,9 +243,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 <script>
 const BOARD_PROFILES={
   '392795928':{label:'Next Planning (OTT)',groupRegex:/OTT-\d{4}\/\d+/,dateOrder:'dm',
-    cols:{person:'person',status:'status',fecha:'fecha_interna',priority:'status0',env:'dropdown_mks2enfy',dlInt:'date_mm4nh4sb',dlCli:'date_mm4nj5v6',client:'tags',planning:'dropdown'}},
+    cols:{person:'person',status:'status',fecha:'fecha_interna',priority:'status0',env:'dropdown_mks2enfy',dlInt:'date_mm4nh4sb',dlCli:'date_mm4nj5v6',client:'tags',planning:'dropdown',sla:'formula9__1',qa:'multiple_person_mm4ksqje'}},
   '758128662':{label:'Platform Planning',groupRegex:/Platform\s+\d{4}\/\d+/,dateOrder:'md',
-    cols:{person:'person',status:'status',fecha:'timeline0',priority:'status0',env:'dropdown_mkys4s46',dlInt:null,dlCli:null,client:'tags0',planning:'dropdown'}}
+    cols:{person:'person',status:'status',fecha:'timeline0',priority:'status0',env:'dropdown_mkys4s46',dlInt:null,dlCli:null,client:'tags0',planning:'dropdown',sla:'formula9',qa:'multiple_person_mm4k2g15'}}
 };
 function boardProfile(){return BOARD_PROFILES[BOARD_ID]||BOARD_PROFILES['392795928'];}
 let BOARD_ID=localStorage.getItem('mds_board_id')||'392795928';
@@ -222,6 +253,10 @@ const EMAIL_MAP={'lloyo@mediastre.am':'Leonardo Loyo','jcarmona@mediastre.am':'J
 const NAME_FIX={'Rene Arias':'René Arias','Sebastian Navarro':'Sebastián Navarro'};
 const TEAM=new Set(['Patrick Stange','Sthephany Granados','Juan José Carmona','René Arias','Daniel Lagos','Alejo Jil','Sebastián Navarro','Andrés Guevara','Bryan Gama','Leonardo Loyo','Esteban Gomez','External','Mateo Vargas','Jeferson Ruiz','Rita Medina']);
 const TEAM_ORDER=['Patrick Stange','Sthephany Granados','Juan José Carmona','René Arias','Daniel Lagos','Alejo Jil','Sebastián Navarro','Andrés Guevara','Bryan Gama','Leonardo Loyo','Esteban Gomez','External','Mateo Vargas','Jeferson Ruiz','Rita Medina'];
+// Known country per person, for holiday shading (Nager.Date). People not listed here (e.g. Platform
+// Planning's roster, which we don't have country data for) simply get no holiday shading — safer than guessing.
+const PERSON_COUNTRY={'Sebastián Navarro':'CO','Esteban Gomez':'CO','Andrés Guevara':'CO','Juan José Carmona':'CO','Daniel Lagos':'CO','Sthephany Granados':'CO','Alejo Beltrán':'CO','Mateo Vargas':'CO','Jeferson Ruiz':'CO','Bryan Gama':'PE','René Arias':'PE','Rita Medina':'PE','Alejo Jil':'CL','Leonardo Loyo':'CL','Patrick Stange':'BR'};
+let holidayCache={}; // 'CO-2026' -> Set of 'YYYY-MM-DD' ISO strings
 const PC=['#6B5FFF','#FF6B9D','#FFB347','#4ECDC4','#45B7D1','#96CEB4','#FF8C94','#A8E6CF','#FFD93D','#C77DFF','#74B9FF'];
 const DN=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 const KEY_CLIENTS=['TVAZTECA','DITU','Aragón_TV'];
@@ -237,23 +272,34 @@ function isInProgress(s){return(s||'').toLowerCase().includes('in progress');}
 function isToDo(s){return(s||'').toLowerCase().includes('to do');}
 
 let TOKEN='',allItems=[],groups=[],currentGroupId='',dayW=55,manualRange=null;
-let apF=new Set(),asF=new Set(),aeF=new Set(),acF=new Set(),aplF=new Set(),onlyDL=false;
+let apF=new Set(),asF=new Set(),aeF=new Set(),acF=new Set(),aplF=new Set(),aqaF=new Set(),onlyDL=false,onlySLA=false;
 let pcmap={},pci=0,hitAreas=[],currentTab='gantt';
 
 function pColor(p){if(!pcmap[p]){pcmap[p]=PC[pci%PC.length];pci++;}return pcmap[p];}
 TEAM_ORDER.forEach(p=>pColor(p));
 
-window.onload=()=>{TOKEN=localStorage.getItem('monday_token')||'';if(TOKEN)loadData();else showSetup();};
+window.onload=()=>{
+  TOKEN=localStorage.getItem('monday_token')||'';
+  pendingURLFilters=parseFiltersFromURL();
+  if(pendingURLFilters&&pendingURLFilters.b)BOARD_ID=pendingURLFilters.b;
+  if(TOKEN)loadData();else showSetup();
+};
 
+const TAB_IDS=['gantt','dash','risk','both','heatmap','trend'];
 function switchTab(tab){
   currentTab=tab;
-  document.getElementById('tab-gantt').className='tab'+(tab==='gantt'?' active':'');
-  document.getElementById('tab-dash').className='tab'+(tab==='dash'?' active':'');
-  document.getElementById('gantt-view').style.display=tab==='gantt'?'flex':'none';
-  document.getElementById('dash-view').style.display=tab==='dash'?'flex':'none';
+  TAB_IDS.forEach(t=>{
+    document.getElementById('tab-'+t).className='tab'+(t===tab?' active':'');
+    document.getElementById(t+'-view').style.display=t===tab?'flex':'none';
+  });
   document.getElementById('export-btn').style.display=tab==='dash'?'flex':'none';
+  document.getElementById('export-slack-btn').style.display=tab==='dash'?'flex':'none';
   if(tab==='dash')renderDash();
   if(tab==='gantt')requestAnimationFrame(()=>render());
+  if(tab==='risk')loadClientRisk();
+  if(tab==='both')loadBothSquads();
+  if(tab==='heatmap')renderHeatmap();
+  if(tab==='trend')loadTrend();
 }
 
 function showSetup(){document.getElementById('setup-screen').style.display='flex';document.getElementById('main-app').style.display='none';document.getElementById('loading-screen').style.display='none';if(TOKEN)document.getElementById('token-inp').value=TOKEN;document.getElementById('board-inp').value=BOARD_ID;}
@@ -301,9 +347,18 @@ async function loadData(){
     const sel=document.getElementById('sprint-sel');
     sel.innerHTML='';
     groups.forEach(g=>{const o=document.createElement('option');o.value=g.id;o.textContent=g.title.replace(/\s*\(.*?\)\s*/g,' ').trim().slice(0,45);sel.appendChild(o);});
-    const current=groups.find(g=>!g.title.toUpperCase().includes('DONE'))||groups[0];
+    const wantG=pendingURLFilters&&pendingURLFilters.g;
+    const current=(wantG&&groups.find(g=>g.id===wantG))||groups.find(g=>!g.title.toUpperCase().includes('DONE'))||groups[0];
     sel.value=current.id;currentGroupId=current.id;
     await loadGroup(currentGroupId);
+    if(pendingURLFilters&&pendingURLFilters.rf&&pendingURLFilters.rt){
+      const rs=new Date(pendingURLFilters.rf+'T00:00:00'),re=new Date(pendingURLFilters.rt+'T00:00:00');
+      if(!isNaN(rs)&&!isNaN(re)){
+        await loadDateRange(rs,re);
+        document.getElementById('range-reset-btn').style.display='';
+      }
+    }
+    if(pendingURLFilters){applyFilterSetsFromURL(pendingURLFilters);pendingURLFilters=null;render();}
     setConnected(true);
     document.getElementById('loading-screen').style.display='none';
     document.getElementById('main-app').style.display='flex';
@@ -327,11 +382,85 @@ async function fetchGroupItemsRaw(gid,colIdsStr){
 }
 
 function colIdsStrFor(P){
-  const colIds=[P.cols.person,P.cols.status,P.cols.fecha,P.cols.priority,P.cols.env,P.cols.dlInt,P.cols.dlCli,P.cols.client,P.cols.planning].filter(Boolean);
+  const colIds=[P.cols.person,P.cols.status,P.cols.fecha,P.cols.priority,P.cols.env,P.cols.dlInt,P.cols.dlCli,P.cols.client,P.cols.planning,P.cols.sla,P.cols.qa].filter(Boolean);
   return colIds.map(c=>`"${c}"`).join(',');
 }
 
 function fmtISO(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+
+// SHAREABLE FILTER STATE — persisted to the URL hash so a filtered view (board, sprint/range,
+// person/env/status/client/planning/QA chips, deadline/SLA toggles, search) can be bookmarked
+// or sent to someone else as a link.
+function syncFiltersToURL(){
+  const params=new URLSearchParams();
+  params.set('b',BOARD_ID);
+  if(manualRange){params.set('rf',fmtISO(manualRange.start));params.set('rt',fmtISO(manualRange.end));}
+  else if(currentGroupId)params.set('g',currentGroupId);
+  if(apF.size)params.set('p',[...apF].join(','));
+  if(aeF.size)params.set('e',[...aeF].join(','));
+  if(asF.size)params.set('s',[...asF].join(','));
+  if(acF.size)params.set('c',[...acF].join(','));
+  if(aplF.size)params.set('pl',[...aplF].join(','));
+  if(aqaF.size)params.set('qa',[...aqaF].join(','));
+  if(onlyDL)params.set('dl','1');
+  if(onlySLA)params.set('sla','1');
+  const qv=document.getElementById('q')?document.getElementById('q').value:'';
+  if(qv)params.set('q',qv);
+  const hash='#'+params.toString();
+  if(location.hash!==hash)history.replaceState(null,'',hash);
+}
+function parseFiltersFromURL(){
+  const params=new URLSearchParams(location.hash.replace(/^#/,''));
+  if(![...params.keys()].length)return null;
+  return{
+    b:params.get('b'),g:params.get('g'),rf:params.get('rf'),rt:params.get('rt'),
+    p:params.get('p'),e:params.get('e'),s:params.get('s'),c:params.get('c'),pl:params.get('pl'),qa:params.get('qa'),
+    dl:params.get('dl')==='1',sla:params.get('sla')==='1',q:params.get('q')
+  };
+}
+function applyFilterSetsFromURL(f){
+  apF=new Set(f.p?f.p.split(','):[]);
+  aeF=new Set(f.e?f.e.split(','):[]);
+  asF=new Set(f.s?f.s.split(','):[]);
+  acF=new Set(f.c?f.c.split(','):[]);
+  aplF=new Set(f.pl?f.pl.split(','):[]);
+  aqaF=new Set(f.qa?f.qa.split(','):[]);
+  onlyDL=!!f.dl;onlySLA=!!f.sla;
+  const qi=document.getElementById('q');if(qi&&f.q)qi.value=f.q;
+  document.getElementById('dl-chip').className='chip'+(onlyDL?' on-red':'');
+  document.getElementById('sla-chip').className='chip'+(onlySLA?' on-red':'');
+}
+let pendingURLFilters=null;
+
+async function ensureHolidays(countries,years){
+  const tasks=[];
+  countries.forEach(c=>years.forEach(y=>{
+    const key=`${c}-${y}`;
+    if(!(key in holidayCache)){
+      holidayCache[key]=null; // mark in-flight so a second call this tick doesn't double-fetch
+      tasks.push(
+        fetch(`https://date.nager.at/api/v3/PublicHolidays/${y}/${c}`)
+          .then(r=>r.ok?r.json():[])
+          .then(list=>{holidayCache[key]=new Set((list||[]).map(h=>h.date));})
+          .catch(()=>{holidayCache[key]=new Set();})
+      );
+    }
+  }));
+  if(tasks.length)await Promise.all(tasks);
+}
+function isHoliday(person,dateObj){
+  const country=PERSON_COUNTRY[person];
+  if(!country)return false;
+  const set=holidayCache[`${country}-${dateObj.getFullYear()}`];
+  return!!(set&&set.has(fmtISO(dateObj)));
+}
+async function ensureHolidaysForCurrentData(){
+  const{start,end}=getSprintDates();
+  const years=[...new Set([start.getFullYear(),end.getFullYear()])];
+  const countries=[...new Set(allItems.flatMap(i=>i.persons).map(p=>PERSON_COUNTRY[p]).filter(Boolean))];
+  if(!countries.length)return;
+  try{await ensureHolidays(countries,years);}catch(e){/* holiday shading is best-effort, never block the render */}
+}
 
 async function loadGroup(gid){
   setLoad('Cargando tareas...');
@@ -344,8 +473,10 @@ async function loadGroup(gid){
   if(d){document.getElementById('range-from').value=fmtISO(d.start);document.getElementById('range-to').value=fmtISO(d.end);}
   const raw=await fetchGroupItemsRaw(gid,colIdsStrFor(P));
   allItems=parseItems(raw,P);
-  apF.clear();asF.clear();aeF.clear();acF.clear();aplF.clear();onlyDL=false;
+  apF.clear();asF.clear();aeF.clear();acF.clear();aplF.clear();aqaF.clear();onlyDL=false;onlySLA=false;
   document.getElementById('dl-chip').className='chip';
+  document.getElementById('sla-chip').className='chip';
+  await ensureHolidaysForCurrentData();
   // Defer render so DOM has layout dimensions
   requestAnimationFrame(()=>{
     render();
@@ -371,8 +502,10 @@ async function loadDateRange(rs,re){
   allItems=parseItems(raw,P);
   const fmt=x=>x.toLocaleDateString('es-CL',{day:'2-digit',month:'short'});
   document.getElementById('sprint-label').textContent=`Rango personalizado: ${fmt(rs)} – ${fmt(re)} (${overlapping.length} sprint${overlapping.length!==1?'s':''})`;
-  apF.clear();asF.clear();aeF.clear();acF.clear();aplF.clear();onlyDL=false;
+  apF.clear();asF.clear();aeF.clear();acF.clear();aplF.clear();aqaF.clear();onlyDL=false;onlySLA=false;
   document.getElementById('dl-chip').className='chip';
+  document.getElementById('sla-chip').className='chip';
+  await ensureHolidaysForCurrentData();
   requestAnimationFrame(()=>{
     render();
     if(currentTab==='dash')renderDash();
@@ -413,6 +546,8 @@ function parseItems(raw,P){
     // TEAM_ORDER is only used below for sort/color preference, not for inclusion.
     const persons=(cols[P.cols.person]||'').split(',').map(p=>p.trim()).filter(Boolean).map(p=>EMAIL_MAP[p]||p).map(p=>NAME_FIX[p]||p);
     if(!persons.length)return;
+    const qaRaw=P.cols.qa?(cols[P.cols.qa]||''):'';
+    const qa=qaRaw.split(',').map(p=>p.trim()).filter(Boolean).map(p=>EMAIL_MAP[p]||p).map(p=>NAME_FIX[p]||p);
     result.push({
       id:item.id,name:item.name,persons,
       status:cols[P.cols.status]||'',
@@ -422,7 +557,9 @@ function parseItems(raw,P){
       deadlineInt:P.cols.dlInt?(cols[P.cols.dlInt]||''):'',
       deadlineCli:P.cols.dlCli?(cols[P.cols.dlCli]||''):'',
       client:P.cols.client?(cols[P.cols.client]||''):'',
-      planning:P.cols.planning?(cols[P.cols.planning]||''):''
+      planning:P.cols.planning?(cols[P.cols.planning]||''):'',
+      sla:P.cols.sla?(cols[P.cols.sla]||''):'',
+      qa
     });
   });
   return result;
@@ -438,6 +575,7 @@ async function onSprintChange(){
 }
 
 function toggleDeadline(){onlyDL=!onlyDL;document.getElementById('dl-chip').className='chip'+(onlyDL?' on-red':'');render();}
+function toggleSlaBad(){onlySLA=!onlySLA;document.getElementById('sla-chip').className='chip'+(onlySLA?' on-red':'');render();}
 
 // DATES
 function parseGroupTitleDates(title,P){
@@ -491,9 +629,10 @@ function buildChips(items){
   const envs=[...new Set(items.map(i=>i.env).filter(Boolean))].sort();
   const statuses=[...new Set(items.map(i=>i.status).filter(Boolean))].sort();
   const plannings=[...new Set(items.map(i=>i.planning).filter(Boolean))].sort();
+  const qas=[...new Set(items.flatMap(i=>i.qa||[]))].sort();
 
-  const pc=document.getElementById('pchips'),ec=document.getElementById('echips'),sc2=document.getElementById('schips'),cc=document.getElementById('cchips'),plc=document.getElementById('plchips');
-  pc.innerHTML='';ec.innerHTML='';sc2.innerHTML='';cc.innerHTML='';plc.innerHTML='';
+  const pc=document.getElementById('pchips'),ec=document.getElementById('echips'),sc2=document.getElementById('schips'),cc=document.getElementById('cchips'),plc=document.getElementById('plchips'),qac=document.getElementById('qachips');
+  pc.innerHTML='';ec.innerHTML='';sc2.innerHTML='';cc.innerHTML='';plc.innerHTML='';qac.innerHTML='';
 
   const a1=document.createElement('button');a1.className='chip'+(apF.size===0?' on':'');a1.textContent='Todos';a1.onclick=()=>{apF.clear();render();};pc.appendChild(a1);
   people.forEach(p=>{const c=document.createElement('button');const col=pColor(p);c.className='chip'+(apF.has(p)?' on':'');c.textContent=p.split(' ')[0];c.title=p;c.style.borderColor=col;if(apF.has(p)){c.style.background=col;c.style.color='#fff';}c.onclick=()=>{apF.has(p)?apF.delete(p):apF.add(p);render();};pc.appendChild(c);});
@@ -510,6 +649,9 @@ function buildChips(items){
 
   const ap=document.createElement('button');ap.className='chip'+(aplF.size===0?' on':'');ap.textContent='Todos';ap.onclick=()=>{aplF.clear();render();};plc.appendChild(ap);
   plannings.forEach(pl=>{const c=document.createElement('button');c.className='chip'+(aplF.has(pl)?' on':'');c.textContent=pl.length>25?pl.slice(0,24)+'…':pl;c.title=pl;const col=PLANNING_COLORS[pl]||'#444';if(aplF.has(pl)){c.style.background=col;c.style.borderColor=col;c.style.color='#fff';}else{c.style.borderColor=col;}c.onclick=()=>{aplF.has(pl)?aplF.delete(pl):aplF.add(pl);render();};plc.appendChild(c);});
+
+  const aq=document.createElement('button');aq.className='chip'+(aqaF.size===0?' on':'');aq.textContent='Todos';aq.onclick=()=>{aqaF.clear();render();};qac.appendChild(aq);
+  qas.forEach(p=>{const c=document.createElement('button');const col=pColor(p);c.className='chip'+(aqaF.has(p)?' on':'');c.textContent=p.split(' ')[0];c.title=p;c.style.borderColor=col;if(aqaF.has(p)){c.style.background=col;c.style.color='#fff';}c.onclick=()=>{aqaF.has(p)?aqaF.delete(p):aqaF.add(p);render();};qac.appendChild(c);});
 }
 
 const ROW_P=36,ROW_E=18,ROW_T=18;
@@ -518,12 +660,14 @@ function filterItems(){
   const q=(document.getElementById('q')?.value||'').toLowerCase();
   return allItems.filter(i=>{
     if(onlyDL&&!i.deadlineCli)return false;
+    if(onlySLA&&(i.sla||'').toUpperCase()!=='BAD')return false;
     if(q&&!i.name.toLowerCase().includes(q)&&!i.persons.join().toLowerCase().includes(q))return false;
     if(apF.size>0&&!i.persons.some(p=>apF.has(p)))return false;
     if(aeF.size>0&&!aeF.has(i.env))return false;
     if(asF.size>0&&!asF.has(i.status))return false;
     if(acF.size>0&&![...acF].some(c=>i.client.includes(c)))return false;
     if(aplF.size>0&&!aplF.has(i.planning))return false;
+    if(aqaF.size>0&&!(i.qa||[]).some(p=>aqaF.has(p)))return false;
     return true;
   });
 }
@@ -599,6 +743,14 @@ function render(){
     envs.forEach(({y:ey,tasks})=>{ctx.fillStyle='rgba(255,255,255,0.01)';ctx.fillRect(0,ey,TW,ROW_E);ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(0,ey+ROW_E);ctx.lineTo(TW,ey+ROW_E);ctx.stroke();tasks.forEach(({y:ty})=>{ctx.strokeStyle='rgba(255,255,255,0.03)';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(0,ty+ROW_T);ctx.lineTo(TW,ty+ROW_T);ctx.stroke();});});
   });
 
+  // Holiday shading — a light tint over this person's whole row-block on any day that's a
+  // public holiday in their country, so "no progress that day" doesn't read as someone slacking.
+  layout.forEach(({person,y,envs})=>{
+    if(!PERSON_COUNTRY[person])return;
+    const blockH=ROW_P+envs.reduce((s,e)=>s+ROW_E+e.tasks.length*ROW_T,0);
+    days.forEach((dd,di)=>{if(isHoliday(person,dd)){ctx.fillStyle='rgba(255,181,71,0.08)';ctx.fillRect(di*dayW,y,dayW,blockH);}});
+  });
+
   hitAreas=[];ctx.font='bold 8px -apple-system,sans-serif';
   layout.forEach(({envs})=>{envs.forEach(({tasks})=>{tasks.forEach(({item:t,y:ty})=>{
     const bar=getBarRange(t.fecha,days);
@@ -608,7 +760,9 @@ function render(){
       ctx.fillStyle=col.bg;ctx.beginPath();ctx.roundRect(bx,by,bw,bh,3);ctx.fill();
       if(t.deadlineCli){ctx.strokeStyle='#FF3B30';ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(bx,by,bw,bh,3);ctx.stroke();}
       else if(t.deadlineInt){ctx.strokeStyle='#FF9500';ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(bx,by,bw,bh,3);ctx.stroke();}
+      if(t.qa&&t.qa.length){ctx.fillStyle=pColor(t.qa[0]);ctx.fillRect(bx,by,4,bh);} // left-edge stripe = QA reviewer assigned
       ctx.fillStyle=col.fg;ctx.save();ctx.beginPath();ctx.rect(bx+2,by,bw-4,bh);ctx.clip();ctx.fillText(t.name,bx+4,by+bh-3);ctx.restore();
+      if((t.sla||'').toUpperCase()==='BAD'){ctx.fillStyle='#FF3B30';ctx.beginPath();ctx.arc(bx+bw-5,by+5,3,0,Math.PI*2);ctx.fill();} // SLA breached
       hitAreas.push({x:bx,y:by,w:bw,h:bh,item:t});
     }
     if(t.deadlineInt){const di=dateToIdx(t.deadlineInt,days);if(di>=0){const dx=di*dayW+dayW/2;ctx.strokeStyle='#FF9500';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(dx,ty);ctx.lineTo(dx,ty+ROW_T);ctx.stroke();}}
@@ -618,6 +772,7 @@ function render(){
   canvas.onmousemove=e=>{const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;const hit=hitAreas.find(h=>mx>=h.x&&mx<=h.x+h.w&&my>=h.y&&my<=h.y+h.h);if(hit){canvas.style.cursor='pointer';showTip(e,hit.item);}else{canvas.style.cursor='default';hideTip();}};
   canvas.onmouseleave=hideTip;
   canvas.onclick=e=>{const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;const hit=hitAreas.find(h=>mx>=h.x&&mx<=h.x+h.w&&my>=h.y&&my<=h.y+h.h);if(hit)window.open(`https://mediastream.monday.com/boards/${BOARD_ID}/pulses/${hit.item.id}`,'_blank');};
+  syncFiltersToURL();
 }
 
 // DASHBOARD
@@ -738,6 +893,177 @@ function renderDash(){
     }).join('')}
   </div>
   `;
+}
+
+// ===== CLIENT RISK TAB =====
+// Board-level query (not scoped to the loaded sprint/range) for every item with Deadline Cliente
+// set, filtered server-side via query_params so we don't have to page through the whole board.
+async function loadClientRisk(){
+  const el=document.getElementById('risk-content');
+  const P=boardProfile();
+  if(!P.cols.dlCli){el.innerHTML='<div class="card">Este tablero no trackea "Deadline Cliente" — esta vista no aplica acá.</div>';return;}
+  el.innerHTML='<div style="color:var(--text2);font-size:12px">Cargando compromisos con clientes de todo el tablero...</div>';
+  try{
+    const colIdsStr=['status',P.cols.dlCli,P.cols.client].filter(Boolean).map(c=>`"${c}"`).join(',');
+    const data=await gql(`{boards(ids:[${BOARD_ID}]){items_page(limit:500,query_params:{rules:[{column_id:"${P.cols.dlCli}",compare_value:[],operator:is_not_empty}]}){cursor items{id name column_values(ids:[${colIdsStr}]){id text}}}}}`);
+    const page=data.boards[0].items_page;
+    let raw=page.items.slice();
+    let cursor=page.cursor;
+    while(cursor){
+      const nd=await gql(`{next_items_page(cursor:"${cursor}",limit:500){cursor items{id name column_values(ids:[${colIdsStr}]){id text}}}}`);
+      raw=raw.concat(nd.next_items_page.items);
+      cursor=nd.next_items_page.cursor;
+    }
+    const today=new Date();today.setHours(0,0,0,0);
+    const in7=new Date(today);in7.setDate(today.getDate()+7);
+    const rows=raw.map(item=>{
+      const cols={};(item.column_values||[]).forEach(c=>cols[c.id]=c.text||'');
+      return{id:item.id,name:item.name,status:cols['status']||'',dlCli:cols[P.cols.dlCli]||'',client:cols[P.cols.client]||''};
+    }).filter(r=>{const s=r.status.toLowerCase();return!s.includes('done')&&!s.includes('cancelled')&&r.dlCli;});
+    const vencidos=[],proximos=[];
+    rows.forEach(r=>{const d=parseDate(r.dlCli);if(!d)return;if(d<today)vencidos.push({...r,d});else if(d<=in7)proximos.push({...r,d});});
+    vencidos.sort((a,b)=>a.d-b.d);proximos.sort((a,b)=>a.d-b.d);
+    const byClient=list=>{const m={};list.forEach(r=>{const k=r.client||'Sin cliente identificado';(m[k]=m[k]||[]).push(r);});return m;};
+    const renderSection=(icon,title,list,color)=>{
+      if(!list.length)return'';
+      const g=byClient(list);
+      let h=`<div class="card" style="margin-bottom:16px"><div class="card-title" style="color:${color}"><span>${icon}</span> ${title} (${list.length})</div>`;
+      Object.entries(g).forEach(([client,items])=>{
+        h+=`<div style="font-size:11px;font-weight:600;color:var(--text2);margin:8px 0 4px">${client}</div>`;
+        items.forEach(r=>{
+          const dd=Math.round((r.d-today)/86400000);
+          const daysTxt=dd<0?`venció hace ${-dd} día${-dd!==1?'s':''}`:dd===0?'vence hoy':`vence en ${dd} día${dd!==1?'s':''}`;
+          h+=`<div class="metric-row"><div class="metric-name" style="font-size:11px"><a href="https://mediastream.monday.com/boards/${BOARD_ID}/pulses/${r.id}" target="_blank" style="color:var(--text);text-decoration:none">${r.name.slice(0,75)}</a></div><div style="font-size:10px;color:${color};white-space:nowrap;padding-left:8px">${daysTxt}</div></div>`;
+        });
+      });
+      return h+'</div>';
+    };
+    let out=renderSection('⚠️','Ya vencidos',vencidos,'#FF3B30')+renderSection('⏳','Próximos a vencer (7 días)',proximos,'#FF9500');
+    el.innerHTML=out||'<div class="card">✅ No hay compromisos con clientes vencidos ni próximos a vencer en los próximos 7 días.</div>';
+  }catch(e){el.innerHTML=`<div class="card" style="color:#FF6B6B">Error cargando riesgo de cliente: ${e.message}</div>`;}
+}
+
+// ===== BOTH SQUADS TAB =====
+// Independent of the main Board/Sprint selectors — always fetches both known boards' current
+// (non-DONE) sprint and shows a compact side-by-side summary.
+async function loadSquadSummary(bid,prof){
+  const gdata=await gql(`{boards(ids:[${bid}]){groups{id title}}}`);
+  const grps=(gdata.boards[0]&&gdata.boards[0].groups||[]).filter(g=>prof.groupRegex.test(g.title));
+  const current=grps.find(g=>!g.title.toUpperCase().includes('DONE'))||grps[0];
+  if(!current)return`<div class="card"><div class="card-title"><span>🧩</span> ${prof.label}</div><div style="color:var(--text2);font-size:11px">No se encontró sprint activo.</div></div>`;
+  const colIdsStr='"status","dropdown"';
+  const raw=await fetchGroupItemsRawFor(bid,current.id,colIdsStr);
+  const items=raw.map(item=>{const cols={};(item.column_values||[]).forEach(c=>cols[c.id]=c.text||'');return{status:cols['status']||'',planning:cols['dropdown']||''};});
+  const total=items.length;
+  const done=items.filter(i=>isDone(i.status)).length;
+  const stuck=items.filter(i=>i.status==='Stuck').length;
+  const bugs=items.filter(i=>i.planning==='Bugs').length;
+  const donePct=total?Math.round(done/total*100):0;
+  const bugPct=total?Math.round(bugs/total*100):0;
+  return`<div class="card">
+    <div class="card-title"><span>🧩</span> ${prof.label}</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:8px">${current.title.replace(/\s*\(.*?\)\s*/g,' ').trim().slice(0,45)}</div>
+    <div class="two-col">
+      <div class="mini-stat"><div class="mini-val">${total}</div><div class="mini-lbl">Tareas</div></div>
+      <div class="mini-stat"><div class="mini-val" style="color:#6FCF97">${donePct}%</div><div class="mini-lbl">Done</div></div>
+      <div class="mini-stat"><div class="mini-val" style="color:#FF6B6B">${stuck}</div><div class="mini-lbl">Stuck</div></div>
+      <div class="mini-stat"><div class="mini-val" style="color:#FFD166">${bugPct}%</div><div class="mini-lbl">Bugs</div></div>
+    </div>
+  </div>`;
+}
+async function fetchGroupItemsRawFor(bid,gid,colIdsStr){
+  const data=await gql(`{boards(ids:[${bid}]){groups(ids:["${gid}"]){items_page(limit:500){cursor items{id column_values(ids:[${colIdsStr}]){id text}}}}}}`);
+  const grp=data.boards[0].groups[0];
+  let raw=grp.items_page.items.slice();
+  let cursor=grp.items_page.cursor;
+  while(cursor){
+    const nd=await gql(`{next_items_page(cursor:"${cursor}",limit:500){cursor items{id column_values(ids:[${colIdsStr}]){id text}}}}`);
+    raw=raw.concat(nd.next_items_page.items);
+    cursor=nd.next_items_page.cursor;
+  }
+  return raw;
+}
+async function loadBothSquads(){
+  const el=document.getElementById('both-content');
+  el.innerHTML='<div style="color:var(--text2);font-size:12px;grid-column:1/-1">Cargando resumen de ambos squads...</div>';
+  try{
+    const panels=await Promise.all(Object.entries(BOARD_PROFILES).map(([bid,prof])=>loadSquadSummary(bid,prof)));
+    el.innerHTML=panels.join('');
+  }catch(e){el.innerHTML=`<div class="card" style="grid-column:1/-1;color:#FF6B6B">Error: ${e.message}</div>`;}
+}
+
+// ===== HEATMAP TAB =====
+// Purely computed from whatever is already loaded in allItems — no extra network calls.
+function renderHeatmap(){
+  const el=document.getElementById('heatmap-content');
+  if(!allItems.length){el.innerHTML='<div style="color:var(--text2);font-size:12px">Sin datos cargados todavía.</div>';return;}
+  const{start:ss,end:se}=getSprintDates();
+  const days=calcTimelineDays(allItems,ss,se);
+  const people=[...new Set(allItems.flatMap(i=>i.persons))].sort((a,b)=>{const ia=TEAM_ORDER.indexOf(a),ib=TEAM_ORDER.indexOf(b);return ia<0&&ib<0?a.localeCompare(b):ia<0?1:ib<0?-1:ia-ib;});
+  const countFor=(person,day)=>allItems.filter(it=>{
+    if(!it.persons.includes(person)||isDone(it.status)||!it.fecha)return false;
+    const parts=it.fecha.split(' - ');
+    const s=parseDate(parts[0]);if(!s)return false;
+    const e=parseDate(parts[1])||s;
+    return day>=s&&day<=e;
+  }).length;
+  let maxC=1;
+  const grid=people.map(p=>days.map(d=>{const c=countFor(p,d);if(c>maxC)maxC=c;return c;}));
+  const colorFor=c=>{if(!c)return'transparent';const t=Math.min(1,c/maxC);const r=Math.round(107+t*148),g=Math.round(95-t*36),b=Math.round(255-t*196);return`rgba(${r},${g<0?0:g},${b<0?0:b},${0.25+t*0.55})`;};
+  let h='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:9px">';
+  h+='<tr><th style="position:sticky;left:0;background:var(--surface);padding:4px 8px;text-align:left;min-width:110px;z-index:1">Persona</th>'+days.map(d=>`<th style="padding:2px;min-width:22px;color:var(--text2);font-weight:400">${d.getDate()}</th>`).join('')+'</tr>';
+  people.forEach((p,pi)=>{
+    h+=`<tr><td style="position:sticky;left:0;background:var(--surface);padding:4px 8px;white-space:nowrap;z-index:1">${p}</td>`;
+    grid[pi].forEach(c=>{h+=`<td title="${c} tarea${c!==1?'s':''} activa${c!==1?'s':''}" style="width:22px;height:20px;text-align:center;background:${colorFor(c)};color:${c?'#fff':'var(--text3)'}">${c||''}</td>`;});
+    h+='</tr>';
+  });
+  h+='</table></div>';
+  h+='<div style="font-size:9px;color:var(--text3);margin-top:10px">Cuenta de tareas activas (no Done) que cruzan ese día, según la fecha "Internal" de cada tarea. Datos del board/sprint/rango actualmente cargado en la pestaña Gantt.</div>';
+  el.innerHTML=h;
+}
+
+// ===== TREND TAB =====
+// Last N sprint groups whose title contains "DONE", ordered chronologically by their parsed end date.
+async function loadTrend(){
+  const el=document.getElementById('trend-content');
+  el.innerHTML='<div style="color:var(--text2);font-size:12px">Cargando tendencia...</div>';
+  try{
+    const P=boardProfile();
+    if(!groups.length){el.innerHTML='<div class="card">Cargá un board primero desde la pestaña Gantt.</div>';return;}
+    const doneGroups=groups
+      .filter(g=>g.title.toUpperCase().includes('DONE'))
+      .map(g=>({...g,dates:parseGroupTitleDates(g.title,P)}))
+      .filter(g=>g.dates)
+      .sort((a,b)=>b.dates.end-a.dates.end)
+      .slice(0,6)
+      .reverse();
+    if(!doneGroups.length){el.innerHTML='<div class="card">No se encontraron sprints marcados DONE para calcular la tendencia.</div>';return;}
+    const colIdsStr='"status","dropdown"';
+    const rows=[];
+    for(const g of doneGroups){
+      el.innerHTML=`<div style="color:var(--text2);font-size:12px">Cargando ${g.title.slice(0,30)}...</div>`;
+      const raw=await fetchGroupItemsRaw(g.id,colIdsStr);
+      const items=raw.map(item=>{const cols={};(item.column_values||[]).forEach(c=>cols[c.id]=c.text||'');return{status:cols['status']||'',planning:cols['dropdown']||''};});
+      const total=items.length;
+      const done=items.filter(i=>isDone(i.status)).length;
+      const bugs=items.filter(i=>i.planning==='Bugs').length;
+      const roadmap=items.filter(i=>i.planning==='Roadmap').length;
+      rows.push({title:g.title.replace(/\s*\(.*?\)\s*/g,' ').trim().slice(0,32),total,donePct:total?Math.round(done/total*100):0,bugPct:total?Math.round(bugs/total*100):0,roadmapPct:total?Math.round(roadmap/total*100):0});
+    }
+    let h=`<div class="card"><div class="card-title"><span>📉</span> Tendencia — últimos ${rows.length} sprints cerrados (${P.label})</div>`;
+    rows.forEach(r=>{
+      h+=`<div style="margin:10px 0">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${r.title}</span><span style="color:var(--text2)">${r.total} tareas</span></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div style="flex:1"><div class="progress-bar"><div class="progress-fill" style="width:${r.donePct}%;background:#6FCF97"></div></div></div>
+          <div style="width:34px;font-size:10px;color:#6FCF97;text-align:right">${r.donePct}%</div>
+        </div>
+        <div style="font-size:9px;color:var(--text3);margin-top:2px">🐛 ${r.bugPct}% bugs · 🗺️ ${r.roadmapPct}% roadmap</div>
+      </div>`;
+    });
+    h+='</div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML=`<div class="card" style="color:#FF6B6B">Error cargando tendencia: ${e.message}</div>`;}
 }
 
 function exportReport(){
@@ -866,7 +1192,10 @@ function exportReport(){
   r+=`Próximo review: siguiente domingo al cierre del sprint\n`;
   r+=sep+'\n';
 
-  // Show modal
+  showExportModal('📋 Reporte Sprint Review',r);
+}
+
+function showExportModal(title,text){
   let modal=document.getElementById('export-modal');
   if(!modal){
     modal=document.createElement('div');
@@ -874,7 +1203,7 @@ function exportReport(){
     modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px';
     modal.innerHTML=`<div style="background:#1A1A22;border:1px solid #38384E;border-radius:12px;width:100%;max-width:640px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #2A2A3A">
-        <div style="font-size:13px;font-weight:600;color:#E8E8F0">📋 Reporte Sprint Review</div>
+        <div style="font-size:13px;font-weight:600;color:#E8E8F0" id="export-title">📋 Reporte</div>
         <div style="display:flex;gap:8px">
           <button onclick="navigator.clipboard.writeText(document.getElementById('export-text').value).then(()=>{this.textContent='✅ Copiado!';setTimeout(()=>this.textContent='📋 Copiar',2000)})" style="padding:5px 12px;border-radius:5px;font-size:11px;cursor:pointer;border:1px solid #3ECF8E;background:rgba(62,207,142,0.1);color:#3ECF8E">📋 Copiar</button>
           <button onclick="document.getElementById('export-modal').remove()" style="padding:5px 12px;border-radius:5px;font-size:11px;cursor:pointer;border:1px solid #38384E;background:#22222E;color:#8888A8">✕ Cerrar</button>
@@ -884,11 +1213,58 @@ function exportReport(){
     </div>`;
     document.body.appendChild(modal);
   }
-  document.getElementById('export-text').value=r;
+  document.getElementById('export-title').textContent=title;
+  document.getElementById('export-text').value=text;
   document.getElementById('export-modal').style.display='flex';
 }
 
-function showTip(e,t){const tt=document.getElementById('tt');const col=getSC(t.status);let dl='';if(t.deadlineCli)dl+=`<div class="tt-dl" style="color:#FF3B30">🔴 Deadline cliente: ${t.deadlineCli}</div>`;if(t.deadlineInt)dl+=`<div class="tt-dl" style="color:#FF9500">🟠 Deadline interno: ${t.deadlineInt}</div>`;tt.innerHTML=`<div class="tt-title">${t.name}</div><div class="tt-meta">👤 ${t.persons.join(', ')}<br>🖥 ${t.env||'—'}<br>📅 ${t.fecha||'Sin fecha'}<br>🏷 ${t.client||'—'} · ${t.planning||'—'}</div><span class="tt-st" style="background:${col.bg};color:${col.fg}">${t.status}</span>${dl}`;tt.style.left=Math.min(e.clientX+12,window.innerWidth-310)+'px';tt.style.top=Math.min(e.clientY+12,window.innerHeight-160)+'px';tt.classList.add('show');}
+// Slack-format export — mirrors the sprint-done-report skill's grouping rules (Cuenta: prefix =
+// client-reported, everything else = equipo and only Critical/High/Medium goes in) so you can
+// preview/hand-copy the same shape of report without waiting for the scheduled Slack automation.
+// NOTE: unlike the automated skill, this can't rewrite jargon-heavy titles into plain language —
+// it just lists the raw task names, grouped and filtered the same way.
+function buildSlackReport(){
+  const items=allItems;
+  const total=items.length;
+  const isCliente=t=>/^\s*\[?\s*Cuenta\s*:/i.test(t.name);
+  const kept=items.filter(i=>{
+    const pl=i.planning||'';
+    if(!pl||pl==='Gestion')return false;
+    if(isCliente(i))return true;
+    return!!i.priority&&i.priority.toLowerCase()!=='low';
+  });
+  const cliente=kept.filter(isCliente);
+  const equipo=kept.filter(i=>!isCliente(i));
+  const excluded=total-kept.length;
+  const byType=list=>{const m={};list.forEach(i=>{const k=i.planning||'Sin categoría';(m[k]=m[k]||[]).push(i);});return m;};
+  const clientNameFrom=name=>{const m=name.match(/^\s*\[?\s*Cuenta\s*:\s*([^-\]]+)/i);return m?m[1].trim():'';};
+  const cleanTitle=name=>name.replace(/^\s*\[?\s*Cuenta\s*:[^\]]*\]?\s*/i,'').trim();
+  const sprintTitle=document.getElementById('sprint-label').textContent;
+
+  const section=(title,list)=>{
+    if(!list.length)return'';
+    let s=`*${title} (${list.length})*\n`;
+    const groups=byType(list);
+    Object.entries(groups).forEach(([type,its])=>{
+      s+=`*${type} (${its.length})*\n`;
+      its.forEach(i=>{
+        const prefix=isCliente(i)?`${clientNameFrom(i.name)}: `:'';
+        s+=`• *${prefix}${cleanTitle(i.name).slice(0,90)}* (${i.env||'—'})\n`;
+      });
+    });
+    return s+'\n';
+  };
+
+  let r=`*📋 Reporte de sprint — ${sprintTitle}*\n`;
+  r+=`Tareas: *${total}* (excluye ${excluded} de gestión/sin categoría/baja prioridad interna)\n\n`;
+  r+=section('📣 Reportadas por cliente',cliente);
+  r+=section('🛠️ Resuelto por el equipo (impacto medio/alto/crítico)',equipo);
+  if(!cliente.length&&!equipo.length)r+='_Sin tareas que cumplan el filtro (Gestión/sin categoría/baja prioridad excluidas)._\n';
+  return r;
+}
+function exportReportSlack(){showExportModal('📋 Reporte formato Slack',buildSlackReport());}
+
+function showTip(e,t){const tt=document.getElementById('tt');const col=getSC(t.status);let dl='';if(t.deadlineCli)dl+=`<div class="tt-dl" style="color:#FF3B30">🔴 Deadline cliente: ${t.deadlineCli}</div>`;if(t.deadlineInt)dl+=`<div class="tt-dl" style="color:#FF9500">🟠 Deadline interno: ${t.deadlineInt}</div>`;if((t.sla||'').toUpperCase()==='BAD')dl+=`<div class="tt-dl" style="color:#FF3B30">⚠️ SLA vencido</div>`;if(t.qa&&t.qa.length)dl+=`<div class="tt-dl" style="color:#8888A8">🔍 QA: ${t.qa.join(', ')}</div>`;tt.innerHTML=`<div class="tt-title">${t.name}</div><div class="tt-meta">👤 ${t.persons.join(', ')}<br>🖥 ${t.env||'—'}<br>📅 ${t.fecha||'Sin fecha'}<br>🏷 ${t.client||'—'} · ${t.planning||'—'}</div><span class="tt-st" style="background:${col.bg};color:${col.fg}">${t.status}</span>${dl}`;tt.style.left=Math.min(e.clientX+12,window.innerWidth-310)+'px';tt.style.top=Math.min(e.clientY+12,window.innerHeight-160)+'px';tt.classList.add('show');}
 function hideTip(){document.getElementById('tt').classList.remove('show');}
 function onGrScroll(){document.getElementById('gl').scrollTop=document.getElementById('gr').scrollTop;}
 function scrollToToday(){const gr=document.getElementById('gr');if(!gr||!allItems.length)return;const{start:ss,end:se}=getSprintDates();const days=calcTimelineDays(allItems,ss,se);const today=new Date();today.setHours(0,0,0,0);const ti=days.findIndex(d=>d.getTime()===today.getTime());if(ti>=0)gr.scrollLeft=Math.max(0,ti*dayW-gr.clientWidth/3);}
