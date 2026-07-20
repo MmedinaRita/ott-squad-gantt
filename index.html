@@ -815,6 +815,34 @@ function renderDash(){
   const clientData={};
   KEY_CLIENTS.forEach(c=>{const its=items.filter(i=>i.client.includes(c));clientData[c]={total:its.length,done:its.filter(i=>isDone(i.status)).length,active:its.filter(i=>isActive(i.status)).length};});
 
+  // 7. Cumplimiento de SLA (solo items que tienen el campo calculado — GOOD/BAD, ignora "Invalid"/vacío)
+  const slaItems=items.filter(i=>['GOOD','BAD'].includes((i.sla||'').toUpperCase()));
+  const slaBad=slaItems.filter(i=>i.sla.toUpperCase()==='BAD');
+  const slaGood=slaItems.filter(i=>i.sla.toUpperCase()==='GOOD');
+  const slaPct=slaItems.length?Math.round(slaGood.length/slaItems.length*100):0;
+  const slaBadUrgent=slaBad.filter(i=>['Critical','High'].includes(i.priority)).length;
+
+  // 8. Deadline Cliente en riesgo — solo del sprint/rango cargado (la pestaña Riesgo Cliente mira todo el tablero)
+  const today0=new Date();today0.setHours(0,0,0,0);
+  const in7d=new Date(today0);in7d.setDate(today0.getDate()+7);
+  const withDl=items.filter(i=>i.deadlineCli&&!isDone(i.status));
+  const dlVencidos=withDl.filter(i=>{const d=parseDate(i.deadlineCli);return d&&d<today0;});
+  const dlProximos=withDl.filter(i=>{const d=parseDate(i.deadlineCli);return d&&d>=today0&&d<=in7d;});
+
+  // 9. Balance de carga QA (personas con algo en la columna "QA assigned", en items no-Done)
+  const qaCounts={};
+  items.filter(i=>!isDone(i.status)).forEach(i=>(i.qa||[]).forEach(p=>{qaCounts[p]=(qaCounts[p]||0)+1;}));
+  const qaEntries=Object.entries(qaCounts).sort((a,b)=>b[1]-a[1]);
+  const qaTotal=qaEntries.reduce((s,[,c])=>s+c,0);
+  const unassignedQA=items.filter(i=>i.status.toLowerCase().includes('qa')&&(!i.qa||!i.qa.length)).length;
+
+  // 10. Urgencia del backlog abierto — % de todo lo no-Done (sin importar de quién) que es Critical/High
+  const openItems=items.filter(i=>!isDone(i.status));
+  const openUrgent=openItems.filter(i=>['Critical','High'].includes(i.priority));
+  const openUrgentPct=openItems.length?Math.round(openUrgent.length/openItems.length*100):0;
+  const openByPriority={};
+  openItems.forEach(i=>{const p=i.priority||'Sin prioridad';openByPriority[p]=(openByPriority[p]||0)+1;});
+
   const dash=document.getElementById('dash-content');
   dash.innerHTML=`
   <!-- Card 1: Activación del sprint -->
@@ -892,7 +920,110 @@ function renderDash(){
       </div>`;
     }).join('')}
   </div>
+
+  <!-- Card 7: Cumplimiento de SLA -->
+  <div class="card">
+    <div class="card-title"><span>⏱</span> Cumplimiento de SLA</div>
+    ${slaItems.length?`
+    <div style="text-align:center;padding:12px 0">
+      <div class="big-num" style="color:${slaPct>=80?'#6FCF97':slaPct>=50?'#FFD166':'#FF6B6B'}">${slaPct}%</div>
+      <div class="big-sub">de las tareas medidas cumplen su SLA</div>
+    </div>
+    <div class="two-col">
+      <div class="mini-stat"><div class="mini-val" style="color:#6FCF97">${slaGood.length}</div><div class="mini-lbl">GOOD</div></div>
+      <div class="mini-stat"><div class="mini-val" style="color:#FF6B6B">${slaBad.length}</div><div class="mini-lbl">BAD</div></div>
+    </div>
+    ${slaBadUrgent?`<div style="font-size:10px;color:#FF6B6B;margin-top:10px">⚠️ ${slaBadUrgent} de las BAD son prioridad Critical/High</div>`:''}
+    `:'<div style="font-size:10px;color:var(--text2);padding:12px 0">Ninguna tarea de este sprint tiene el campo SLA calculado.</div>'}
+  </div>
+
+  <!-- Card 8: Deadline Cliente en riesgo (sprint actual) -->
+  <div class="card">
+    <div class="card-title"><span>⚠️</span> Deadline Cliente — este sprint</div>
+    ${!boardProfile().cols.dlCli?'<div style="font-size:10px;color:var(--text2);padding:12px 0">Este tablero no trackea "Deadline Cliente".</div>':
+      !withDl.length?'<div style="font-size:10px;color:var(--text2);padding:12px 0">Ningún ítem de este sprint tiene Deadline Cliente asignado.</div>':`
+    <div class="two-col" style="margin-top:4px">
+      <div class="mini-stat"><div class="mini-val" style="color:#FF3B30">${dlVencidos.length}</div><div class="mini-lbl">Vencidos</div></div>
+      <div class="mini-stat"><div class="mini-val" style="color:#FF9500">${dlProximos.length}</div><div class="mini-lbl">Próx. 7 días</div></div>
+    </div>
+    <div style="font-size:9px;color:var(--text3);margin-top:10px">Solo del sprint/rango cargado — la pestaña "Riesgo Cliente" mira todo el tablero.</div>
+    `}
+  </div>
+
+  <!-- Card 9: Balance de carga QA -->
+  <div class="card">
+    <div class="card-title"><span>🔍</span> Balance de carga QA</div>
+    ${qaEntries.length?qaEntries.map(([p,c])=>{
+      const pct=qaTotal?Math.round(c/qaTotal*100):0;
+      const ini=p.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+      return`<div class="metric-row">
+        <div style="display:flex;align-items:center;gap:6px"><div class="av" style="background:${pColor(p)};width:18px;height:18px;font-size:7px;flex-shrink:0">${ini}</div><div class="metric-name">${p}</div></div>
+        <div class="metric-val">${c} <span style="font-size:9px;color:var(--text2)">(${pct}%)</span></div>
+      </div>`;
+    }).join(''):'<div style="font-size:10px;color:var(--text2);padding:12px 0">Nadie tiene QA asignado todavía en este sprint.</div>'}
+    <div style="font-size:9px;color:var(--text3);margin-top:8px">${unassignedQA} tarea${unassignedQA!==1?'s':''} en QA sin nadie puesto en "QA assigned".</div>
+  </div>
+
+  <!-- Card 10: Urgencia del backlog abierto -->
+  <div class="card">
+    <div class="card-title"><span>🔥</span> Urgencia del Backlog Abierto</div>
+    <div style="text-align:center;padding:12px 0">
+      <div class="big-num" style="color:${openUrgentPct>=50?'#FF6B6B':openUrgentPct>=25?'#FFD166':'#6FCF97'}">${openUrgentPct}%</div>
+      <div class="big-sub">de lo no-Done es Critical o High</div>
+    </div>
+    ${Object.entries(openByPriority).sort((a,b)=>b[1]-a[1]).map(([p,c])=>{
+      const pct=openItems.length?Math.round(c/openItems.length*100):0;
+      const col=p==='Critical'?'#FF3B30':p==='High'?'#FF9500':p==='Medium'?'#007eb5':p==='Low'?'#8888A8':'#444';
+      return`<div class="metric-row"><div class="metric-name">${p}</div><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:100px"><div class="progress-fill" style="width:${pct}%;background:${col}"></div></div><div class="metric-val" style="min-width:32px;text-align:right">${c}</div></div></div>`;
+    }).join('')}
+  </div>
+
+  <!-- Card 11: Comparación vs sprint anterior (async — se llena después de renderizar) -->
+  <div class="card">
+    <div class="card-title"><span>📊</span> Comparación vs sprint anterior</div>
+    <div id="cmp-card" style="font-size:11px;color:var(--text2)">Cargando comparación...</div>
+  </div>
   `;
+  loadSprintComparison();
+}
+
+// Card 10's data — fetched separately (async) so it doesn't block the rest of the dashboard.
+// Finds the closest DONE sprint group whose end date is before the current sprint's start.
+function trendArrow(curV,prevV,higherIsBetter){
+  const diff=curV-prevV;
+  const good=higherIsBetter?diff>0:diff<0;
+  const color=diff===0?'var(--text2)':good?'#6FCF97':'#FF6B6B';
+  const sym=diff>0?'▲':diff<0?'▼':'=';
+  return`<span style="color:${color}">${sym} ${diff>0?'+':''}${diff}</span>`;
+}
+async function loadSprintComparison(){
+  const el=document.getElementById('cmp-card');
+  if(!el)return;
+  try{
+    const P=boardProfile();
+    const cur=groups.find(g=>g.id===currentGroupId);
+    const curDates=cur?parseGroupTitleDates(cur.title,P):null;
+    if(!curDates){el.textContent='No se pudo determinar el sprint actual para comparar.';return;}
+    const prev=groups
+      .filter(g=>g.id!==(cur&&cur.id))
+      .map(g=>({...g,dates:parseGroupTitleDates(g.title,P)}))
+      .filter(g=>g.dates&&g.dates.end<curDates.start)
+      .sort((a,b)=>b.dates.end-a.dates.end)[0];
+    if(!prev){el.textContent='No se encontró un sprint anterior para comparar.';return;}
+    const raw=await fetchGroupItemsRaw(prev.id,'"status","dropdown"');
+    const prevItems=raw.map(item=>{const cols={};(item.column_values||[]).forEach(c=>cols[c.id]=c.text||'');return{status:cols['status']||'',planning:cols['dropdown']||''};});
+    const pTotal=prevItems.length;
+    const pDonePct=pTotal?Math.round(prevItems.filter(i=>isDone(i.status)).length/pTotal*100):0;
+    const pBugPct=pTotal?Math.round(prevItems.filter(i=>i.planning==='Bugs').length/pTotal*100):0;
+    const cTotal=allItems.length;
+    const cDonePct=cTotal?Math.round(allItems.filter(i=>isDone(i.status)).length/cTotal*100):0;
+    const cBugPct=cTotal?Math.round(allItems.filter(i=>i.planning==='Bugs').length/cTotal*100):0;
+    el.innerHTML=`
+      <div style="font-size:9px;color:var(--text3);margin-bottom:8px">vs. ${prev.title.replace(/\s*\(.*?\)\s*/g,' ').trim().slice(0,32)}</div>
+      <div class="metric-row"><div class="metric-name">Done</div><div class="metric-val">${cDonePct}% ${trendArrow(cDonePct,pDonePct,true)}</div></div>
+      <div class="metric-row"><div class="metric-name">Bugs</div><div class="metric-val">${cBugPct}% ${trendArrow(cBugPct,pBugPct,false)}</div></div>
+    `;
+  }catch(e){if(document.getElementById('cmp-card'))document.getElementById('cmp-card').innerHTML=`<span style="color:#FF6B6B">Error: ${e.message}</span>`;}
 }
 
 // ===== CLIENT RISK TAB =====
