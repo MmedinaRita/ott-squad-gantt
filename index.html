@@ -148,6 +148,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
       <select class="sprint-sel" id="board-sel" onchange="onBoardChange()"></select>
       <span class="lbl">Sprint:</span>
       <select class="sprint-sel" id="sprint-sel" onchange="onSprintChange()"></select>
+      <span class="lbl">Rango:</span>
+      <input type="date" id="range-from" style="padding:3px 6px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:10px;outline:none">
+      <input type="date" id="range-to" style="padding:3px 6px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:10px;outline:none">
+      <button class="btn" onclick="applyDateRange()">Aplicar</button>
+      <button class="btn" id="range-reset-btn" onclick="resetDateRange()" style="display:none">✕ Volver a sprint</button>
     </div>
   </div>
 
@@ -231,7 +236,7 @@ function isDone(s){return(s||'').toLowerCase().includes('done');}
 function isInProgress(s){return(s||'').toLowerCase().includes('in progress');}
 function isToDo(s){return(s||'').toLowerCase().includes('to do');}
 
-let TOKEN='',allItems=[],groups=[],currentGroupId='',dayW=55;
+let TOKEN='',allItems=[],groups=[],currentGroupId='',dayW=55,manualRange=null;
 let apF=new Set(),asF=new Set(),aeF=new Set(),acF=new Set(),aplF=new Set(),onlyDL=false;
 let pcmap={},pci=0,hitAreas=[],currentTab='gantt';
 
@@ -305,23 +310,39 @@ async function loadData(){
   }catch(e){document.getElementById('loading-screen').style.display='none';setConnected(false);alert(`Error: ${e.message}`);showSetup();}
 }
 
-async function loadGroup(gid){
-  setLoad('Cargando tareas...');
-  const P=boardProfile();
-  const colIds=[P.cols.person,P.cols.status,P.cols.fecha,P.cols.priority,P.cols.env,P.cols.dlInt,P.cols.dlCli,P.cols.client,P.cols.planning].filter(Boolean);
-  const colIdsStr=colIds.map(c=>`"${c}"`).join(',');
-  const data=await gql(`{boards(ids:[${BOARD_ID}]){groups(ids:["${gid}"]){title items_page(limit:500){cursor items{id name column_values(ids:[${colIdsStr}]){id text}}}}}}`);
+// Fetches every item in a single group, paginating past the 500-item page limit
+// (large groups — backlog-heavy sprints — were being silently truncated before).
+async function fetchGroupItemsRaw(gid,colIdsStr){
+  const data=await gql(`{boards(ids:[${BOARD_ID}]){groups(ids:["${gid}"]){items_page(limit:500){cursor items{id name column_values(ids:[${colIdsStr}]){id text}}}}}}`);
   const grp=data.boards[0].groups[0];
-  document.getElementById('sprint-label').textContent=grp.title;
   let raw=grp.items_page.items.slice();
   let cursor=grp.items_page.cursor;
-  // Paginate past the 500-item page limit — large groups (backlog-heavy sprints) were being silently truncated before.
   while(cursor){
     setLoad(`Cargando tareas... (${raw.length})`);
     const nd=await gql(`{next_items_page(cursor:"${cursor}",limit:500){cursor items{id name column_values(ids:[${colIdsStr}]){id text}}}}`);
     raw=raw.concat(nd.next_items_page.items);
     cursor=nd.next_items_page.cursor;
   }
+  return raw;
+}
+
+function colIdsStrFor(P){
+  const colIds=[P.cols.person,P.cols.status,P.cols.fecha,P.cols.priority,P.cols.env,P.cols.dlInt,P.cols.dlCli,P.cols.client,P.cols.planning].filter(Boolean);
+  return colIds.map(c=>`"${c}"`).join(',');
+}
+
+function fmtISO(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+
+async function loadGroup(gid){
+  setLoad('Cargando tareas...');
+  manualRange=null;
+  document.getElementById('range-reset-btn').style.display='none';
+  const P=boardProfile();
+  const grpMeta=groups.find(g=>g.id===gid);
+  document.getElementById('sprint-label').textContent=grpMeta?grpMeta.title:'';
+  const d=grpMeta?parseGroupTitleDates(grpMeta.title,P):null;
+  if(d){document.getElementById('range-from').value=fmtISO(d.start);document.getElementById('range-to').value=fmtISO(d.end);}
+  const raw=await fetchGroupItemsRaw(gid,colIdsStrFor(P));
   allItems=parseItems(raw,P);
   apF.clear();asF.clear();aeF.clear();acF.clear();aplF.clear();onlyDL=false;
   document.getElementById('dl-chip').className='chip';
@@ -331,6 +352,55 @@ async function loadGroup(gid){
     if(currentTab==='dash')renderDash();
     setTimeout(scrollToToday,350);
   });
+}
+
+// MANUAL DATE RANGE — merges items from every known sprint group whose dates
+// overlap the chosen [rs,re] window, so you can view a custom span across sprints.
+async function loadDateRange(rs,re){
+  setLoad('Cargando rango de fechas...');
+  const P=boardProfile();
+  const overlapping=groups.filter(g=>{const d=parseGroupTitleDates(g.title,P);return d&&d.start<=re&&d.end>=rs;});
+  if(!overlapping.length)throw new Error('Ningún sprint conocido se solapa con ese rango de fechas');
+  const colIdsStr=colIdsStrFor(P);
+  let raw=[];
+  for(const g of overlapping){
+    setLoad(`Cargando ${g.title.slice(0,30)}...`);
+    raw=raw.concat(await fetchGroupItemsRaw(g.id,colIdsStr));
+  }
+  manualRange={start:rs,end:re};
+  allItems=parseItems(raw,P);
+  const fmt=x=>x.toLocaleDateString('es-CL',{day:'2-digit',month:'short'});
+  document.getElementById('sprint-label').textContent=`Rango personalizado: ${fmt(rs)} – ${fmt(re)} (${overlapping.length} sprint${overlapping.length!==1?'s':''})`;
+  apF.clear();asF.clear();aeF.clear();acF.clear();aplF.clear();onlyDL=false;
+  document.getElementById('dl-chip').className='chip';
+  requestAnimationFrame(()=>{
+    render();
+    if(currentTab==='dash')renderDash();
+    setTimeout(scrollToToday,350);
+  });
+}
+
+async function applyDateRange(){
+  const fromV=document.getElementById('range-from').value;
+  const toV=document.getElementById('range-to').value;
+  if(!fromV||!toV){alert('Elegí ambas fechas ("Desde" y "Hasta")');return;}
+  const rs=new Date(fromV+'T00:00:00'),re=new Date(toV+'T00:00:00');
+  if(rs>re){alert('La fecha "Desde" debe ser anterior a "Hasta"');return;}
+  document.getElementById('loading-screen').style.display='flex';
+  document.getElementById('main-app').style.display='none';
+  try{
+    await loadDateRange(rs,re);
+    document.getElementById('range-reset-btn').style.display='';
+  }catch(e){alert('Error: '+e.message);}
+  finally{document.getElementById('loading-screen').style.display='none';document.getElementById('main-app').style.display='flex';}
+}
+
+async function resetDateRange(){
+  document.getElementById('loading-screen').style.display='flex';
+  document.getElementById('main-app').style.display='none';
+  try{await loadGroup(currentGroupId);}
+  catch(e){alert('Error: '+e.message);}
+  finally{document.getElementById('loading-screen').style.display='none';document.getElementById('main-app').style.display='flex';}
 }
 
 function parseItems(raw,P){
@@ -370,24 +440,27 @@ async function onSprintChange(){
 function toggleDeadline(){onlyDL=!onlyDL;document.getElementById('dl-chip').className='chip'+(onlyDL?' on-red':'');render();}
 
 // DATES
-function getSprintDates(){
-  const grp=groups.find(g=>g.id===currentGroupId);
-  if(!grp)return{start:new Date(),end:new Date()};
+function parseGroupTitleDates(title,P){
+  P=P||boardProfile();
   const MONTHS={Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Set:8,Sep:8,Oct:9,Nov:10,Dic:11};
-  const dateOrder=boardProfile().dateOrder;
   // OTT groups read "DD Mes - DD Mes" (day before month); Platform Planning groups read
   // "Mes DD - Mes DD" (month before day) — same title shape, opposite token order.
-  const re=dateOrder==='md'
+  const re=P.dateOrder==='md'
     ?/\(\s*(\w+)\s+(\d+)\s*[-–]\s*(\w+)\s+(\d+)\s*(?:(\d{4}))?\s*\)/
     :/\(\s*(\d+)\s+(\w+)\s*[-–]\s*(\d+)\s+(\w+)\s*(?:(\d{4}))?\s*\)/;
-  const m=grp.title.match(re);
-  if(m){
-    const[monA,dayA,monB,dayB]=dateOrder==='md'?[m[1],m[2],m[3],m[4]]:[m[2],m[1],m[4],m[3]];
-    const yr=m[5]?parseInt(m[5]):new Date().getFullYear();
-    const s=new Date(yr,MONTHS[monA]??5,parseInt(dayA));
-    const e=new Date(yr,MONTHS[monB]??5,parseInt(dayB));
-    if(!isNaN(s)&&!isNaN(e))return{start:s,end:e};
-  }
+  const m=title.match(re);
+  if(!m)return null;
+  const[monA,dayA,monB,dayB]=P.dateOrder==='md'?[m[1],m[2],m[3],m[4]]:[m[2],m[1],m[4],m[3]];
+  const yr=m[5]?parseInt(m[5]):new Date().getFullYear();
+  const s=new Date(yr,MONTHS[monA]??5,parseInt(dayA));
+  const e=new Date(yr,MONTHS[monB]??5,parseInt(dayB));
+  if(isNaN(s)||isNaN(e))return null;
+  return{start:s,end:e};
+}
+function getSprintDates(){
+  if(manualRange)return manualRange;
+  const grp=groups.find(g=>g.id===currentGroupId);
+  if(grp){const d=parseGroupTitleDates(grp.title);if(d)return d;}
   const t=new Date();t.setHours(0,0,0,0);const s=new Date(t);s.setDate(t.getDate()-6);const e=new Date(t);e.setDate(t.getDate()+6);return{start:s,end:e};
 }
 function mkDays(s,e){const days=[],d=new Date(s);while(d<=e){days.push(new Date(d));d.setDate(d.getDate()+1);}return days;}
