@@ -144,6 +144,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
     <div class="tab" id="tab-dash" onclick="switchTab('dash')">📈 Resumen Ejecutivo</div>
     <button id="export-btn" onclick="exportReport()" style="display:none;margin-left:auto;margin-right:16px;padding:5px 14px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid #3ECF8E;background:rgba(62,207,142,0.1);color:#3ECF8E;align-self:center;transition:all .15s" onmouseover="this.style.background='rgba(62,207,142,0.2)'" onmouseout="this.style.background='rgba(62,207,142,0.1)'">📋 Exportar reporte</button>
     <div style="margin-left:auto;display:flex;align-items:center;padding:0 16px;gap:8px">
+      <span class="lbl">Board:</span>
+      <select class="sprint-sel" id="board-sel" onchange="onBoardChange()"></select>
       <span class="lbl">Sprint:</span>
       <select class="sprint-sel" id="sprint-sel" onchange="onSprintChange()"></select>
     </div>
@@ -203,7 +205,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 <div class="tt" id="tt"></div>
 
 <script>
-const BOARD_ID='392795928';
+const BOARD_PROFILES={
+  '392795928':{label:'Next Planning (OTT)',groupRegex:/OTT-\d{4}\/\d+/,dateOrder:'dm',
+    cols:{person:'person',status:'status',fecha:'fecha_interna',priority:'status0',env:'dropdown_mks2enfy',dlInt:'date_mm4nh4sb',dlCli:'date_mm4nj5v6',client:'tags',planning:'dropdown'}},
+  '758128662':{label:'Platform Planning',groupRegex:/Platform\s+\d{4}\/\d+/,dateOrder:'md',
+    cols:{person:'person',status:'status',fecha:'timeline0',priority:'status0',env:'dropdown_mkys4s46',dlInt:null,dlCli:null,client:'tags0',planning:'dropdown'}}
+};
+function boardProfile(){return BOARD_PROFILES[BOARD_ID]||BOARD_PROFILES['392795928'];}
+let BOARD_ID=localStorage.getItem('mds_board_id')||'392795928';
 const EMAIL_MAP={'lloyo@mediastre.am':'Leonardo Loyo','jcarmona@mediastre.am':'Juan José Carmona','egomez@mediastre.am':'Esteban Gomez'};
 const NAME_FIX={'Rene Arias':'René Arias','Sebastian Navarro':'Sebastián Navarro'};
 const TEAM=new Set(['Patrick Stange','Sthephany Granados','Juan José Carmona','René Arias','Daniel Lagos','Alejo Jil','Sebastián Navarro','Andrés Guevara','Bryan Gama','Leonardo Loyo','Esteban Gomez','External','Mateo Vargas','Jeferson Ruiz','Rita Medina']);
@@ -242,9 +251,33 @@ function switchTab(tab){
   if(tab==='gantt')requestAnimationFrame(()=>render());
 }
 
-function showSetup(){document.getElementById('setup-screen').style.display='flex';document.getElementById('main-app').style.display='none';document.getElementById('loading-screen').style.display='none';if(TOKEN)document.getElementById('token-inp').value=TOKEN;}
+function showSetup(){document.getElementById('setup-screen').style.display='flex';document.getElementById('main-app').style.display='none';document.getElementById('loading-screen').style.display='none';if(TOKEN)document.getElementById('token-inp').value=TOKEN;document.getElementById('board-inp').value=BOARD_ID;}
 function cancelSetup(){if(allItems.length){document.getElementById('setup-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('main-app').style.flexDirection='column';}}
-function saveAndLoad(){TOKEN=document.getElementById('token-inp').value.trim();if(!TOKEN){alert('Ingresá el token');return;}localStorage.setItem('monday_token',TOKEN);loadData();}
+function saveAndLoad(){
+  TOKEN=document.getElementById('token-inp').value.trim();
+  if(!TOKEN){alert('Ingresá el token');return;}
+  localStorage.setItem('monday_token',TOKEN);
+  const bid=document.getElementById('board-inp').value.trim();
+  if(bid){BOARD_ID=bid;localStorage.setItem('mds_board_id',BOARD_ID);}
+  loadData();
+}
+
+function populateBoardSelect(){
+  const sel=document.getElementById('board-sel');
+  if(!sel)return;
+  sel.innerHTML='';
+  Object.entries(BOARD_PROFILES).forEach(([id,p])=>{const o=document.createElement('option');o.value=id;o.textContent=p.label;sel.appendChild(o);});
+  if(!BOARD_PROFILES[BOARD_ID]){const o=document.createElement('option');o.value=BOARD_ID;o.textContent=`Board personalizado (${BOARD_ID})`;sel.appendChild(o);}
+  sel.value=BOARD_ID;
+}
+
+async function onBoardChange(){
+  const newId=document.getElementById('board-sel').value;
+  if(newId===BOARD_ID)return;
+  BOARD_ID=newId;
+  localStorage.setItem('mds_board_id',BOARD_ID);
+  await loadData(); // loadData() already handles the loading/main-app screen transitions and error alert
+}
 
 async function gql(q){const r=await fetch('https://api.monday.com/v2',{method:'POST',headers:{'Content-Type':'application/json','Authorization':TOKEN,'API-Version':'2024-01'},body:JSON.stringify({query:q})});if(!r.ok)throw new Error(`HTTP ${r.status}`);const d=await r.json();if(d.errors)throw new Error(d.errors[0].message);return d.data;}
 
@@ -254,8 +287,12 @@ async function loadData(){
   document.getElementById('main-app').style.display='none';
   setLoad('Conectando...');
   try{
+    populateBoardSelect();
+    const P=boardProfile();
     const gdata=await gql(`{boards(ids:[${BOARD_ID}]){name groups{id title}}}`);
-    groups=gdata.boards[0].groups.filter(g=>g.title.match(/OTT-\d{4}\/\d+/));
+    if(!gdata.boards||!gdata.boards[0])throw new Error('Board no encontrado — revisá el Board ID');
+    groups=gdata.boards[0].groups.filter(g=>P.groupRegex.test(g.title));
+    if(!groups.length)throw new Error(`No se encontraron grupos de sprint con el patrón esperado para "${P.label}"`);
     const sel=document.getElementById('sprint-sel');
     sel.innerHTML='';
     groups.forEach(g=>{const o=document.createElement('option');o.value=g.id;o.textContent=g.title.replace(/\s*\(.*?\)\s*/g,' ').trim().slice(0,45);sel.appendChild(o);});
@@ -270,10 +307,22 @@ async function loadData(){
 
 async function loadGroup(gid){
   setLoad('Cargando tareas...');
-  const data=await gql(`{boards(ids:[${BOARD_ID}]){groups(ids:["${gid}"]){title items_page(limit:500){items{id name column_values(ids:["person","status","fecha_interna","status0","dropdown_mks2enfy","date_mm4nh4sb","date_mm4nj5v6","tags","dropdown"]){id text}}}}}}`);
+  const P=boardProfile();
+  const colIds=[P.cols.person,P.cols.status,P.cols.fecha,P.cols.priority,P.cols.env,P.cols.dlInt,P.cols.dlCli,P.cols.client,P.cols.planning].filter(Boolean);
+  const colIdsStr=colIds.map(c=>`"${c}"`).join(',');
+  const data=await gql(`{boards(ids:[${BOARD_ID}]){groups(ids:["${gid}"]){title items_page(limit:500){cursor items{id name column_values(ids:[${colIdsStr}]){id text}}}}}}`);
   const grp=data.boards[0].groups[0];
   document.getElementById('sprint-label').textContent=grp.title;
-  allItems=parseItems(grp.items_page.items);
+  let raw=grp.items_page.items.slice();
+  let cursor=grp.items_page.cursor;
+  // Paginate past the 500-item page limit — large groups (backlog-heavy sprints) were being silently truncated before.
+  while(cursor){
+    setLoad(`Cargando tareas... (${raw.length})`);
+    const nd=await gql(`{next_items_page(cursor:"${cursor}",limit:500){cursor items{id name column_values(ids:[${colIdsStr}]){id text}}}}`);
+    raw=raw.concat(nd.next_items_page.items);
+    cursor=nd.next_items_page.cursor;
+  }
+  allItems=parseItems(raw,P);
   apF.clear();asF.clear();aeF.clear();acF.clear();aplF.clear();onlyDL=false;
   document.getElementById('dl-chip').className='chip';
   // Defer render so DOM has layout dimensions
@@ -284,13 +333,27 @@ async function loadGroup(gid){
   });
 }
 
-function parseItems(raw){
+function parseItems(raw,P){
+  P=P||boardProfile();
   const result=[];
   raw.forEach(item=>{
     const cols={};(item.column_values||[]).forEach(c=>cols[c.id]=c.text||'');
-    const persons=(cols['person']||'').split(',').map(p=>p.trim()).filter(Boolean).map(p=>EMAIL_MAP[p]||p).map(p=>NAME_FIX[p]||p).filter(p=>TEAM.has(p));
+    // No longer hard-filtered against the OTT TEAM allow-list — that silently emptied out
+    // any board (e.g. Platform Planning) whose roster isn't in TEAM. Any assignee is shown;
+    // TEAM_ORDER is only used below for sort/color preference, not for inclusion.
+    const persons=(cols[P.cols.person]||'').split(',').map(p=>p.trim()).filter(Boolean).map(p=>EMAIL_MAP[p]||p).map(p=>NAME_FIX[p]||p);
     if(!persons.length)return;
-    result.push({id:item.id,name:item.name,persons,status:cols['status']||'',env:cols['dropdown_mks2enfy']||'',fecha:cols['fecha_interna']||'',priority:cols['status0']||'',deadlineInt:cols['date_mm4nh4sb']||'',deadlineCli:cols['date_mm4nj5v6']||'',client:cols['tags']||'',planning:cols['dropdown']||''});
+    result.push({
+      id:item.id,name:item.name,persons,
+      status:cols[P.cols.status]||'',
+      env:P.cols.env?(cols[P.cols.env]||''):'',
+      fecha:P.cols.fecha?(cols[P.cols.fecha]||''):'',
+      priority:cols[P.cols.priority]||'',
+      deadlineInt:P.cols.dlInt?(cols[P.cols.dlInt]||''):'',
+      deadlineCli:P.cols.dlCli?(cols[P.cols.dlCli]||''):'',
+      client:P.cols.client?(cols[P.cols.client]||''):'',
+      planning:P.cols.planning?(cols[P.cols.planning]||''):''
+    });
   });
   return result;
 }
@@ -311,8 +374,20 @@ function getSprintDates(){
   const grp=groups.find(g=>g.id===currentGroupId);
   if(!grp)return{start:new Date(),end:new Date()};
   const MONTHS={Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Set:8,Sep:8,Oct:9,Nov:10,Dic:11};
-  const m=grp.title.match(/\(\s*(\d+)\s+(\w+)\s*[-–]\s*(\d+)\s+(\w+)\s*(?:(\d{4}))?\s*\)/);
-  if(m){const yr=m[5]?parseInt(m[5]):new Date().getFullYear();const s=new Date(yr,MONTHS[m[2]]??5,parseInt(m[1]));const e=new Date(yr,MONTHS[m[4]]??5,parseInt(m[3]));if(!isNaN(s)&&!isNaN(e))return{start:s,end:e};}
+  const dateOrder=boardProfile().dateOrder;
+  // OTT groups read "DD Mes - DD Mes" (day before month); Platform Planning groups read
+  // "Mes DD - Mes DD" (month before day) — same title shape, opposite token order.
+  const re=dateOrder==='md'
+    ?/\(\s*(\w+)\s+(\d+)\s*[-–]\s*(\w+)\s+(\d+)\s*(?:(\d{4}))?\s*\)/
+    :/\(\s*(\d+)\s+(\w+)\s*[-–]\s*(\d+)\s+(\w+)\s*(?:(\d{4}))?\s*\)/;
+  const m=grp.title.match(re);
+  if(m){
+    const[monA,dayA,monB,dayB]=dateOrder==='md'?[m[1],m[2],m[3],m[4]]:[m[2],m[1],m[4],m[3]];
+    const yr=m[5]?parseInt(m[5]):new Date().getFullYear();
+    const s=new Date(yr,MONTHS[monA]??5,parseInt(dayA));
+    const e=new Date(yr,MONTHS[monB]??5,parseInt(dayB));
+    if(!isNaN(s)&&!isNaN(e))return{start:s,end:e};
+  }
   const t=new Date();t.setHours(0,0,0,0);const s=new Date(t);s.setDate(t.getDate()-6);const e=new Date(t);e.setDate(t.getDate()+6);return{start:s,end:e};
 }
 function mkDays(s,e){const days=[],d=new Date(s);while(d<=e){days.push(new Date(d));d.setDate(d.getDate()+1);}return days;}
